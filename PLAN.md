@@ -64,7 +64,7 @@ Devices found on the Windows install:
   ```
 - [x] Put the project under git (branch `main`, first commit `3500c89`; `core.fileMode=false` because the drive is NTFS)
 
-## Phase 2: Galaxy Buds (working on real hardware, not yet installed)
+## Phase 2: Galaxy Buds (installed 2026-10-24)
 
 Decisions (2026-10-24): target the **Buds Pro** (the pair at hand); the Bluetooth link lives in a
 **per-user D-Bus service** (`galaxybudsd`, `io.github.galaxybook.Buds1`) shared by the app and the extension.
@@ -101,11 +101,11 @@ Neither pair is paired on Linux yet.
 ### To do
 
 - [x] Pair the earbuds (done: Buds3 Pro)
-- [ ] **Reinstall** to deploy galaxybudsd and the new app/extension: `./install.sh`, then close and reopen the app
-- [ ] Check the installed service picks up the Buds: `systemctl --user status galaxybudsd` and the app's Galaxy Buds tab
-- [ ] Disconnect/reconnect the Buds and check the app clears and refills the status
+- [x] **Reinstall** to deploy galaxybudsd and the new app/extension: `./install.sh`, then close and reopen the app
+- [x] Check the installed service picks up the Buds: `systemctl --user status galaxybudsd` and the app's Galaxy Buds tab
+- [x] Disconnect/reconnect the Buds: service clears status (battery -1, mode "") and refills it on reconnect (tested 2026-10-24 via bluetoothctl)
 - [ ] **After logout/login**: check the Galaxy Buds tile together with the Galaxy Book tile
-- [ ] Commit phase 2
+- [x] Commit phase 2 (`5995765`)
 
 Debugging: `systemctl --user stop galaxybudsd; /usr/libexec/galaxybook-settings/galaxybudsd --debug`
 
@@ -114,9 +114,67 @@ Debugging: `systemctl --user stop galaxybudsd; /usr/libexec/galaxybook-settings/
 - Buds+ / original Buds Pro on hardware (the Buds Pro is in the model table but untested)
 - Ambient sound volume, ANC level, find my earbuds, custom 9-band EQ (Buds3 Pro)
 
-## Phase 3 option (not started)
+## Phase 3: Galaxy phone (S26 Ultra), installed 2026-10-24
 
-- **Galaxy phone (S26 Ultra):** battery and notifications, sending files, screen mirroring via adb/scrcpy and Bluetooth. Quick Share and Multi Control use proprietary protocols, so those would be best-effort.
+Decisions (2026-10-24):
+- Build our own **per-user service `galaxyphoned`** (`io.github.galaxybook.Phone1`) rather than use the
+  preinstalled Zorin Connect, so the phone sits in the same app and Quick Settings as the laptop and Buds.
+- **Transport: Bluetooth first, adb optional.** Bluetooth needs no phone setup: OBEX push (files),
+  MAP (SMS), HFP battery indicator (0-5). When adb is reachable (USB or wireless debugging) it adds
+  exact battery, all-app notifications and scrcpy mirroring.
+- First round: battery + connection, send files, SMS / notifications, screen mirroring.
+
+Phone facts: "S26 Ultra de José do Carmo", EC:B5:50:3D:4A:BC, already paired/bonded/trusted in BlueZ;
+offers OPP, MAP server, PBAP server, HFP/HSP AG, PANU/NAP. adb is at
+`/media/jose/arquivos/Projetos/ambiente/Android/Sdk/platform-tools/adb` (no device attached yet);
+scrcpy is not installed; obexd is at `/usr/libexec/bluetooth/obexd` (user `obex.service`, inactive).
+
+Probed on the real phone (2026-10-24):
+- **Battery over Bluetooth comes for free:** once the phone connects, PipeWire's HFP-HF backend reports the
+  AG battery indicator to BlueZ, so `org.bluez.Battery1.Percentage` appears on the phone (0-100 in 20% steps).
+  galaxyphoned reads that instead of opening HFP itself (PipeWire owns it).
+- **MAP works** through obexd (`obex.service`, user): after allowing message access on the phone, a
+  `map` session lists `/telecom/msg/{inbox,outbox,sent,deleted,draft}` with sender, timestamp, read flag and text.
+  The first attempt timed out while the phone's permission prompt was pending.
+- adb 37 (platform-tools) has built-in mDNS, so a phone paired once with `adb pair` reconnects by itself while
+  wireless debugging is on.
+
+Design:
+- `io.github.galaxybook.Phone1` on the session bus, object `/io/github/galaxybook/Phone1`.
+  Properties: `Connected`, `Name`, `Address`, `Battery` (-1 unknown), `BatteryCharging`, `BatterySource`
+  (`bluetooth`/`adb`), `AdbConnected`, `AdbSerial`, `CanMirror`.
+  Methods: `SendFiles(as)` (adb push to Download when adb is up, else OBEX push), `StartMirroring()` (scrcpy),
+  `AdbPair(s address, s code)` (wireless debugging pairing).
+- SMS: keep a MAP session open while the phone is connected; new inbox messages (obexd's MNS events,
+  surfaced as new `Message1` objects) become desktop notifications.
+- adb: `adb track-devices` for presence; `dumpsys battery` for exact battery; poll
+  `dumpsys notification --noredact` and post new app notifications on the desktop.
+- Nautilus script "Send to Galaxy phone" calls `SendFiles`.
+
+### To do
+
+- [x] Design the D-Bus API and pick the battery source over Bluetooth
+- [x] `daemon/galaxyphoned.py` + `tests/test_galaxyphoned.py` (12 parser tests; 26 total pass)
+- [x] Ran from source against the real phone: Bluetooth connection, name, battery 40% (bluetooth source),
+      MAP session opened automatically; method argument checks return clear errors
+- [x] App "Phone" tab (status, Send files, Mirror screen, wireless-debugging pairing); rendered and checked.
+      App takes `--page laptop|buds|phone` and `--send-files`; desktop action "Send files to phone"
+- [x] Extension "Galaxy phone" tile (battery subtitle, Mirror screen / Send files… / Phone settings); syntax only
+- [x] install.sh / uninstall.sh: user unit `galaxyphoned.service`, D-Bus activation file, drop-in
+      `~/.config/systemd/user/galaxyphoned.service.d/tools.conf` with `ADB=`/`SCRCPY=` when they live outside
+      /usr/bin, Nautilus script "Send to Galaxy phone"
+- [x] **Install** (2026-10-24): all installed files match the source; galaxyphoned active and enabled, sees the phone
+      (battery 40%, bluetooth source), MAP session open; adb drop-in written; extension ACTIVE after re-login, no shell errors
+- [ ] Send a file over Bluetooth (accept on the phone) from the app and from Nautilus (right-click › Scripts)
+- [ ] Receive an SMS and check the desktop notification (MAP event or the 120 s poll)
+- [ ] Pair adb over wireless debugging from the app; check exact battery, app notifications, adb push
+- [ ] Install scrcpy (`sudo apt install scrcpy`, 1.25 in the Zorin repo) and test Mirror screen
+      (2026-10-24: apt `scrcpy` 1.25 and `adb` 34 now installed in /usr/bin, so install.sh writes no drop-in
+      and the service uses those; still to test Mirror screen, which needs adb connected)
+- [ ] After logout/login: Galaxy phone tile
+- [x] Commit phase 3 (2026-10-24)
+
+Debugging: `systemctl --user stop galaxyphoned; ADB=$(command -v adb) /usr/libexec/galaxybook-settings/galaxyphoned --debug`
 
 ## Useful references
 

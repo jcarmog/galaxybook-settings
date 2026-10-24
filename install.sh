@@ -1,6 +1,7 @@
 #!/bin/bash
-# Install Galaxy Book Settings: the galaxybookd system service (needs sudo),
-# the GTK app, and the GNOME Shell extension for the current user.
+# Install Galaxy Book Settings: the galaxybookd system service (needs sudo), the
+# galaxybudsd and galaxyphoned user services, the GTK app, and the GNOME Shell
+# extension for the current user.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -34,6 +35,26 @@ systemctl --user daemon-reload
 systemctl --user enable galaxybudsd.service
 systemctl --user restart galaxybudsd.service
 
+echo "==> Installing galaxyphoned user service (sudo)"
+sudo install -Dm755 "$HERE/daemon/galaxyphoned.py" /usr/libexec/galaxybook-settings/galaxyphoned
+sudo install -Dm644 "$HERE/data/io.github.galaxybook.Phone1.service" /usr/share/dbus-1/services/io.github.galaxybook.Phone1.service
+sudo install -Dm644 "$HERE/data/galaxyphoned.service" /usr/lib/systemd/user/galaxyphoned.service
+# The user service doesn't see the shell's PATH, so point it at an SDK adb/scrcpy outside the system dirs
+DROPIN="$HOME/.config/systemd/user/galaxyphoned.service.d/tools.conf"
+rm -f "$DROPIN"
+for tool in adb scrcpy; do
+    path="$(command -v "$tool" || true)"
+    if [[ -n "$path" && "$path" != /usr/bin/* && "$path" != /bin/* ]]; then
+        mkdir -p "$(dirname "$DROPIN")"
+        [[ -f "$DROPIN" ]] || echo "[Service]" > "$DROPIN"
+        echo "Environment=${tool^^}=$(readlink -f "$path")" >> "$DROPIN"
+    fi
+done
+systemctl --user daemon-reload
+systemctl --user enable galaxyphoned.service
+systemctl --user restart galaxyphoned.service
+install -Dm755 "$HERE/data/send-to-galaxy-phone" "$HOME/.local/share/nautilus/scripts/Send to Galaxy phone"
+
 echo "==> Installing Galaxy Book Settings app (sudo)"
 sudo install -Dm755 "$HERE/app/galaxybook-settings" "$PREFIX/bin/galaxybook-settings"
 sudo install -Dm644 "$HERE/data/io.github.galaxybook.Settings.desktop" "$PREFIX/share/applications/io.github.galaxybook.Settings.desktop"
@@ -49,6 +70,7 @@ gnome-extensions enable "$UUID" 2>/dev/null || true
 echo
 systemctl --no-pager --lines=3 status galaxybookd.service || true
 systemctl --user --no-pager --lines=3 status galaxybudsd.service || true
+systemctl --user --no-pager --lines=3 status galaxyphoned.service || true
 echo
 echo "Done. Open 'Galaxy Book Settings' from the app grid."
 echo "The Quick Settings tile appears after you log out and back in (Wayland can't reload GNOME Shell)."

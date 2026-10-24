@@ -48,6 +48,24 @@ const BudsIface = `
 </node>`;
 const BudsProxy = Gio.DBusProxy.makeProxyWrapper(BudsIface);
 
+const PHONE_BUS_NAME = 'io.github.galaxybook.Phone1';
+const PHONE_OBJECT_PATH = '/io/github/galaxybook/Phone1';
+
+const PhoneIface = `
+<node>
+  <interface name="io.github.galaxybook.Phone1">
+    <property name="Connected" type="b" access="read"/>
+    <property name="Name" type="s" access="read"/>
+    <property name="Battery" type="i" access="read"/>
+    <property name="BatteryCharging" type="b" access="read"/>
+    <property name="BatterySource" type="s" access="read"/>
+    <property name="AdbConnected" type="b" access="read"/>
+    <property name="CanMirror" type="b" access="read"/>
+    <method name="StartMirroring"/>
+  </interface>
+</node>`;
+const PhoneProxy = Gio.DBusProxy.makeProxyWrapper(PhoneIface);
+
 const NOISE_MODES = [
     {mode: 'anc', label: 'Noise canceling'},
     {mode: 'adaptive', label: 'Adaptive'},
@@ -67,7 +85,8 @@ function newProxy(Wrapper, bus, name, path, cancellable) {
 }
 
 function callProxy(proxy, method, value, onError) {
-    proxy[`${method}Remote`](value, (_result, error) => {
+    const args = value === undefined ? [] : [value];
+    proxy[`${method}Remote`](...args, (_result, error) => {
         if (error) {
             Gio.DBusError.strip_remote_error(error);
             Main.notifyError('Galaxy Book', error.message);
@@ -103,11 +122,7 @@ class GalaxyBookToggle extends QuickMenuToggle {
         });
 
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
-        const settingsItem = this.menu.addAction('Galaxy Book Settings', () => {
-            Main.overview.hide();
-            Main.panel.closeQuickSettings();
-            Shell.AppSystem.get_default().lookup_app(APP_ID)?.activate();
-        });
+        const settingsItem = this.menu.addAction('Galaxy Book Settings', () => launchApp(null));
         settingsItem.visible = Shell.AppSystem.get_default().lookup_app(APP_ID) !== null;
 
         this.connect('clicked', () => {
@@ -206,9 +221,72 @@ class BudsToggle extends QuickMenuToggle {
     }
 });
 
+function launchApp(action) {
+    Main.overview.hide();
+    Main.panel.closeQuickSettings();
+    const app = Shell.AppSystem.get_default().lookup_app(APP_ID);
+    if (action)
+        app?.launch_action(action, 0, -1);
+    else
+        app?.activate();
+}
+
+const PhoneToggle = GObject.registerClass(
+class PhoneToggle extends QuickMenuToggle {
+    _init(proxy) {
+        super._init({
+            title: 'Galaxy phone',
+            iconName: 'phone-symbolic',
+            toggleMode: false,
+        });
+        this._proxy = proxy;
+
+        this.menu.setHeader('phone-symbolic', 'Galaxy phone');
+        this._mirrorItem = this.menu.addAction('Mirror screen', () => {
+            Main.panel.closeQuickSettings();
+            callProxy(this._proxy, 'StartMirroring');
+        });
+        this.menu.addAction('Send files…', () => launchApp('send-files'));
+        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+        this.menu.addAction('Phone settings', () => launchApp(null));
+
+        // There is nothing to switch on or off, so a click opens the menu
+        this.connect('clicked', () => this.menu.open());
+        this._propsId = proxy.connect('g-properties-changed', () => this._sync());
+        this._ownerId = proxy.connect('notify::g-name-owner', () => this._sync());
+        this._sync();
+    }
+
+    _sync() {
+        const running = this._proxy.g_name_owner !== null;
+        const connected = running && (Boolean(this._proxy.Connected) || Boolean(this._proxy.AdbConnected));
+        this.visible = connected;
+        if (!connected)
+            return;
+
+        this.checked = true;
+        this.title = this._proxy.Name || 'Galaxy phone';
+        const level = this._proxy.Battery ?? -1;
+        const parts = [];
+        if (level >= 0)
+            parts.push(this._proxy.BatterySource === 'adb' ? `${level}%` : `~${level}%`);
+        if (this._proxy.BatteryCharging)
+            parts.push('charging');
+        this.subtitle = parts.join(' · ') || null;
+        this.menu.setHeader('phone-symbolic', this.title, this.subtitle ?? '');
+        this._mirrorItem.visible = Boolean(this._proxy.CanMirror);
+    }
+
+    destroy() {
+        this._proxy.disconnect(this._propsId);
+        this._proxy.disconnect(this._ownerId);
+        super.destroy();
+    }
+});
+
 const GalaxyBookIndicator = GObject.registerClass(
 class GalaxyBookIndicator extends SystemIndicator {
-    _init(proxy, budsProxy) {
+    _init(proxy, budsProxy, phoneProxy) {
         super._init();
         this._proxy = proxy;
         if (proxy) {
@@ -221,6 +299,8 @@ class GalaxyBookIndicator extends SystemIndicator {
         }
         if (budsProxy)
             this.quickSettingsItems.push(new BudsToggle(budsProxy));
+        if (phoneProxy)
+            this.quickSettingsItems.push(new PhoneToggle(phoneProxy));
     }
 
     _sync() {
@@ -248,16 +328,17 @@ export default class GalaxyBookExtension extends Extension {
         Promise.all([
             settled(newProxy(SettingsProxy, Gio.DBus.system, BUS_NAME, OBJECT_PATH, cancellable), 'galaxybookd'),
             settled(newProxy(BudsProxy, Gio.DBus.session, BUDS_BUS_NAME, BUDS_OBJECT_PATH, cancellable), 'galaxybudsd'),
-        ]).then(([proxy, budsProxy]) => {
+            settled(newProxy(PhoneProxy, Gio.DBus.session, PHONE_BUS_NAME, PHONE_OBJECT_PATH, cancellable), 'galaxyphoned'),
+        ]).then(([proxy, budsProxy, phoneProxy]) => {
             if (cancellable.is_cancelled())
                 return;
             if (proxy && !proxy.Features) {
                 console.warn('Galaxy Book Settings: galaxybookd is not running');
                 proxy = null;
             }
-            if (!proxy && !budsProxy)
+            if (!proxy && !budsProxy && !phoneProxy)
                 return;
-            this._indicator = new GalaxyBookIndicator(proxy, budsProxy);
+            this._indicator = new GalaxyBookIndicator(proxy, budsProxy, phoneProxy);
             Main.panel.statusArea.quickSettings.addExternalIndicator(this._indicator);
         });
     }

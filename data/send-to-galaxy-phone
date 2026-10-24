@@ -1,0 +1,24 @@
+#!/usr/bin/env python3
+"""Nautilus script: send the selected files to the Galaxy phone through galaxyphoned."""
+
+import os
+import sys
+
+from gi.repository import Gio, GLib
+
+paths = [p for p in os.environ.get("NAUTILUS_SCRIPT_SELECTED_FILE_PATHS", "").split("\n") if p] or sys.argv[1:]
+paths = [os.path.abspath(p) for p in paths if os.path.isfile(p)]
+if not paths:
+    sys.exit(0)
+try:
+    Gio.bus_get_sync(Gio.BusType.SESSION).call_sync(
+        "io.github.galaxybook.Phone1", "/io/github/galaxybook/Phone1", "io.github.galaxybook.Phone1",
+        "SendFiles", GLib.Variant("(as)", (paths,)), None, Gio.DBusCallFlags.NONE, -1, None)
+except GLib.Error as e:
+    Gio.DBusError.strip_remote_error(e)
+    Gio.bus_get_sync(Gio.BusType.SESSION).call_sync(
+        "org.freedesktop.Notifications", "/org/freedesktop/Notifications", "org.freedesktop.Notifications", "Notify",
+        GLib.Variant("(susssasa{sv}i)", ("Galaxy phone", 0, "phone-symbolic", "Could not send files", e.message,
+                                         [], {}, -1)),
+        None, Gio.DBusCallFlags.NONE, -1, None)
+    sys.exit(1)

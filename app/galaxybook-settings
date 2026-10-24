@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Galaxy Book Settings - GTK4/libadwaita front end for galaxybookd.
+"""Galaxy Book Settings - GTK4/libadwaita front end for galaxybookd, galaxybudsd and galaxyphoned.
 
 Set GALAXYBOOK_BUS=session to talk to a development daemon on the session bus.
 """
@@ -20,6 +20,9 @@ IFACE = "io.github.galaxybook.Settings1"
 BUDS_BUS_NAME = "io.github.galaxybook.Buds1"
 BUDS_OBJECT_PATH = "/io/github/galaxybook/Buds1"
 BUDS_IFACE = "io.github.galaxybook.Buds1"
+PHONE_BUS_NAME = "io.github.galaxybook.Phone1"
+PHONE_OBJECT_PATH = "/io/github/galaxybook/Phone1"
+PHONE_IFACE = "io.github.galaxybook.Phone1"
 
 # Names Samsung Settings uses on Windows for each platform profile
 PROFILE_LABELS = {
@@ -85,14 +88,14 @@ def service_unavailable(service):
 
 
 class SettingsWindow(Adw.ApplicationWindow):
-    def __init__(self, app, proxy, buds_proxy):
+    def __init__(self, app, proxy, buds_proxy, phone_proxy):
         super().__init__(application=app, title="Galaxy Book Settings", default_width=560, default_height=720)
         self.proxy = proxy
         self.updating = False
         self.threshold_timeout = 0
 
         self.toasts = Adw.ToastOverlay()
-        stack = Adw.ViewStack()
+        self.stack = stack = Adw.ViewStack()
         header = Adw.HeaderBar(title_widget=Adw.ViewSwitcher(stack=stack, policy=Adw.ViewSwitcherPolicy.WIDE))
         toolbar = Adw.ToolbarView()
         toolbar.add_top_bar(header)
@@ -103,6 +106,9 @@ class SettingsWindow(Adw.ApplicationWindow):
         stack.add_titled_with_icon(self.build_laptop_page(), "laptop", "Laptop", "computer-laptop-symbolic")
         buds_page = BudsPage(buds_proxy, self.toasts) if buds_proxy else service_unavailable("galaxybudsd")
         stack.add_titled_with_icon(buds_page, "buds", "Galaxy Buds", "audio-headphones-symbolic")
+        self.phone_page = PhonePage(phone_proxy, self.toasts) if phone_proxy else None
+        stack.add_titled_with_icon(self.phone_page or service_unavailable("galaxyphoned"), "phone", "Phone",
+                                   "phone-symbolic")
 
     def build_laptop_page(self):
         if self.proxy is None or not self.proxy.get_cached_property_names():
@@ -405,9 +411,142 @@ class BudsPage(Adw.PreferencesPage):
             self.call("SetTouchpadLocked", "(b)", row.get_active())
 
 
+class PhonePage(Adw.PreferencesPage):
+    """Battery, file sending, screen mirroring and wireless-debugging pairing for the
+    paired Galaxy phone, via galaxyphoned."""
+
+    def __init__(self, proxy, toasts):
+        super().__init__()
+        self.proxy = proxy
+        self.toasts = toasts
+
+        group = Adw.PreferencesGroup()
+        self.status_row = Adw.ActionRow()
+        self.status_row.add_prefix(Gtk.Image(icon_name="phone-symbolic", pixel_size=32))
+        self.battery_label = Gtk.Label(css_classes=["dim-label"], valign=Gtk.Align.CENTER)
+        self.status_row.add_suffix(self.battery_label)
+        group.add(self.status_row)
+        self.add(group)
+
+        actions = Adw.PreferencesGroup(title="Share")
+        self.send_row = Adw.ActionRow(title="Send files", activatable=True)
+        self.send_row.add_suffix(Gtk.Image(icon_name="go-next-symbolic"))
+        self.send_row.connect("activated", lambda *_: self.choose_files())
+        actions.add(self.send_row)
+        self.mirror_row = Adw.ActionRow(title="Mirror phone screen", activatable=True)
+        self.mirror_row.add_suffix(Gtk.Image(icon_name="go-next-symbolic"))
+        self.mirror_row.connect("activated", lambda *_: call_proxy(self.proxy, self.toasts, "StartMirroring", "()", ()))
+        actions.add(self.mirror_row)
+        self.add(actions)
+
+        adb = Adw.PreferencesGroup(
+            title="Wireless debugging",
+            description="Exact battery, notifications from every app and screen mirroring need adb. On the phone, "
+                        "open Settings › Developer options › Wireless debugging › Pair device with pairing code, "
+                        "then enter what it shows. Pairing is needed once.",
+        )
+        self.adb_row = Adw.ActionRow(title="adb")
+        adb.add(self.adb_row)
+        self.address_row = Adw.EntryRow(title="IP address and port")
+        adb.add(self.address_row)
+        self.code_row = Adw.EntryRow(title="Pairing code", input_purpose=Gtk.InputPurpose.DIGITS)
+        self.pair_button = Gtk.Button(label="Pair", valign=Gtk.Align.CENTER, css_classes=["suggested-action"])
+        self.pair_button.connect("clicked", self.on_pair)
+        self.code_row.add_suffix(self.pair_button)
+        adb.add(self.code_row)
+        self.add(adb)
+
+        proxy.connect("g-properties-changed", lambda *_: self.sync())
+        proxy.connect("notify::g-name-owner", lambda *_: self.sync())
+        self.sync()
+
+    def prop(self, name):
+        value = self.proxy.get_cached_property(name)
+        return value.unpack() if value is not None else None
+
+    def sync(self):
+        running = self.proxy.get_name_owner() is not None
+        bluetooth, adb = running and bool(self.prop("Connected")), running and bool(self.prop("AdbConnected"))
+        self.status_row.set_title((running and self.prop("Name")) or "Galaxy phone")
+        if not running:
+            subtitle = "The galaxyphoned service is not running"
+        elif bluetooth and adb:
+            subtitle = "Connected over Bluetooth and adb"
+        elif bluetooth or adb:
+            subtitle = f"Connected over {'Bluetooth' if bluetooth else 'adb'}"
+        elif self.prop("Address"):
+            subtitle = "Not connected. Turn on Bluetooth on the phone."
+        else:
+            subtitle = "No phone paired. Pair it in Bluetooth settings."
+        self.status_row.set_subtitle(subtitle)
+
+        level = self.prop("Battery") if running else None
+        parts = []
+        if level is not None and level >= 0:
+            parts.append(f"{level}%" if self.prop("BatterySource") == "adb" else f"about {level}%")
+            if self.prop("BatteryCharging"):
+                parts.append("charging")
+        self.battery_label.set_label(" · ".join(parts))
+
+        self.send_row.set_sensitive(bluetooth or adb)
+        self.send_row.set_subtitle("With adb they go to Downloads; over Bluetooth, accept them on the phone")
+        can_mirror = running and bool(self.prop("CanMirror"))
+        self.mirror_row.set_sensitive(can_mirror)
+        self.mirror_row.set_subtitle("Opens the phone screen in a window (scrcpy)" if can_mirror
+                                     else "Needs adb and scrcpy")
+        self.adb_row.set_subtitle(f"Connected · {self.prop('AdbSerial')}" if adb else "Not connected")
+
+    def choose_files(self):
+        dialog = Gtk.FileDialog(title="Send files to your phone")
+
+        def chosen(dialog, result):
+            try:
+                files = dialog.open_multiple_finish(result)
+            except GLib.Error:
+                return  # cancelled
+            paths = [f.get_path() for f in files if f.get_path()]
+            if paths:
+                call_proxy(self.proxy, self.toasts, "SendFiles", "(as)", (paths,))
+
+        dialog.open_multiple(self.get_root(), None, chosen)
+
+    def on_pair(self, _button):
+        address, code = self.address_row.get_text().strip(), self.code_row.get_text().strip()
+        self.pair_button.set_sensitive(False)
+
+        def done(proxy, result):
+            self.pair_button.set_sensitive(True)
+            try:
+                proxy.call_finish(result)
+            except GLib.Error as e:
+                Gio.DBusError.strip_remote_error(e)
+                self.toasts.add_toast(Adw.Toast(title=e.message, timeout=5))
+                return
+            self.code_row.set_text("")
+            self.toasts.add_toast(Adw.Toast(title="Paired. The phone connects whenever wireless debugging is on."))
+
+        self.proxy.call("AdbPair", GLib.Variant("(ss)", (address, code)), Gio.DBusCallFlags.NONE, 60000, None, done)
+
+
 class SettingsApp(Adw.Application):
     def __init__(self):
-        super().__init__(application_id=APP_ID, flags=Gio.ApplicationFlags.DEFAULT_FLAGS)
+        super().__init__(application_id=APP_ID, flags=Gio.ApplicationFlags.HANDLES_COMMAND_LINE)
+        self.add_main_option("page", 0, GLib.OptionFlags.NONE, GLib.OptionArg.STRING,
+                             "Page to show: laptop, buds or phone", "PAGE")
+        self.add_main_option("send-files", 0, GLib.OptionFlags.NONE, GLib.OptionArg.NONE,
+                             "Choose files to send to the phone", None)
+
+    def do_command_line(self, command_line):
+        options = command_line.get_options_dict().end().unpack()
+        self.activate()
+        win = self.get_active_window()
+        if options.get("send-files"):
+            options["page"] = "phone"
+        if options.get("page") in ("laptop", "buds", "phone"):
+            win.stack.set_visible_child_name(options["page"])
+        if options.get("send-files") and win.phone_page:
+            win.phone_page.choose_files()
+        return 0
 
     def do_activate(self):
         win = self.get_active_window()
@@ -417,6 +556,7 @@ class SettingsApp(Adw.Application):
                 self,
                 self.connect_proxy(bus, BUS_NAME, OBJECT_PATH, IFACE),
                 self.connect_proxy(Gio.BusType.SESSION, BUDS_BUS_NAME, BUDS_OBJECT_PATH, BUDS_IFACE),
+                self.connect_proxy(Gio.BusType.SESSION, PHONE_BUS_NAME, PHONE_OBJECT_PATH, PHONE_IFACE),
             )
         win.present()
 

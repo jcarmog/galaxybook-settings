@@ -8,5 +8,11 @@ Exec=galaxybook-settings
 Icon=computer-laptop-symbolic
 Terminal=false
 Categories=Settings;HardwareSettings;GTK;
-Keywords=samsung;galaxy;battery;performance;keyboard;backlight;
+Keywords=samsung;galaxy;battery;performance;keyboard;backlight;buds;phone;
 StartupNotify=true
+Actions=send-files;
+
+[Desktop Action send-files]
+Name=Send files to phone
+Name[pt_BR]=Enviar arquivos para o celular
+Exec=galaxybook-settings --send-files
