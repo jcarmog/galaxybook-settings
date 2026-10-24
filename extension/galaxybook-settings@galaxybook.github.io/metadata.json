@@ -1,0 +1,7 @@
+{
+  "uuid": "galaxybook-settings@galaxybook.github.io",
+  "name": "Galaxy Book Settings",
+  "description": "Quick Settings for Samsung Galaxy Book laptops: battery protection, camera and microphone block, USB charging and lid power-on. Requires the galaxybookd service.",
+  "shell-version": ["45", "46", "47", "48"],
+  "version": 1
+}

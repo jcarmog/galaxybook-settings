@@ -1,0 +1,275 @@
+#!/usr/bin/env python3
+"""Galaxy Book Settings - GTK4/libadwaita front end for galaxybookd.
+
+Set GALAXYBOOK_BUS=session to talk to a development daemon on the session bus.
+"""
+
+import os
+import sys
+
+import gi
+
+gi.require_version("Gtk", "4.0")
+gi.require_version("Adw", "1")
+from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
+
+APP_ID = "io.github.galaxybook.Settings"
+BUS_NAME = "io.github.galaxybook.Settings1"
+OBJECT_PATH = "/io/github/galaxybook/Settings1"
+IFACE = "io.github.galaxybook.Settings1"
+
+# Names Samsung Settings uses on Windows for each platform profile
+PROFILE_LABELS = {
+    "low-power": ("Power saving", "Lowest power use, reduced performance"),
+    "quiet": ("Silent", "Quiet fans and lower temperatures"),
+    "balanced": ("Optimized", "Balance performance and battery life"),
+    "performance": ("High performance", "Maximum performance, louder fans"),
+}
+DEFAULT_PROTECTION_LIMIT = 80
+BATTERY_DIR = "/sys/class/power_supply/BAT1"
+
+
+def read_sysfs(path, default=None):
+    try:
+        with open(path) as f:
+            return f.read().strip()
+    except OSError:
+        return default
+
+
+class SettingsWindow(Adw.ApplicationWindow):
+    def __init__(self, app, proxy):
+        super().__init__(application=app, title="Galaxy Book Settings", default_width=560, default_height=720)
+        self.proxy = proxy
+        self.updating = False
+        self.threshold_timeout = 0
+
+        self.toasts = Adw.ToastOverlay()
+        toolbar = Adw.ToolbarView()
+        toolbar.add_top_bar(Adw.HeaderBar())
+        toolbar.set_content(self.toasts)
+        self.set_content(toolbar)
+
+        if proxy is None or not proxy.get_cached_property_names():
+            self.toasts.set_child(Adw.StatusPage(
+                icon_name="dialog-warning-symbolic",
+                title="Service not available",
+                description="The galaxybookd service is not running.\n"
+                            "Install it with sudo ./install.sh and try again.",
+            ))
+            return
+
+        page = Adw.PreferencesPage()
+        self.toasts.set_child(page)
+        features = self.prop("Features") or []
+
+        page.add(self.build_device_info())
+        if "platform-profile" in features:
+            page.add(self.build_performance())
+        if "charge-threshold" in features:
+            page.add(self.build_battery())
+        if "kbd-backlight" in features:
+            page.add(self.build_keyboard())
+        hw_group = self.build_hardware(features)
+        if hw_group:
+            page.add(hw_group)
+
+        proxy.connect("g-properties-changed", lambda *_: self.sync())
+        self.sync()
+        GLib.timeout_add_seconds(30, self.refresh_battery_info)
+
+    # -- helpers ------------------------------------------------------------
+
+    def prop(self, name):
+        value = self.proxy.get_cached_property(name)
+        return value.unpack() if value is not None else None
+
+    def call(self, method, signature, *args):
+        def done(proxy, result):
+            try:
+                proxy.call_finish(result)
+            except GLib.Error as e:
+                Gio.DBusError.strip_remote_error(e)
+                self.toasts.add_toast(Adw.Toast(title=e.message, timeout=5))
+                self.sync()
+
+        self.proxy.call(method, GLib.Variant(signature, args), Gio.DBusCallFlags.NONE, -1, None, done)
+
+    # -- sections -----------------------------------------------------------
+
+    def build_device_info(self):
+        group = Adw.PreferencesGroup()
+        vendor = read_sysfs("/sys/class/dmi/id/sys_vendor", "")
+        product = read_sysfs("/sys/class/dmi/id/product_name", "")
+        family = read_sysfs("/sys/class/dmi/id/product_family", "")
+        title = family if family and "galaxy" in family.lower() else "Galaxy Book"
+        self.device_row = Adw.ActionRow(title=title, subtitle=f"{vendor.title()} {product}".strip())
+        self.device_row.add_prefix(Gtk.Image(icon_name="computer-laptop-symbolic", pixel_size=32))
+        self.battery_label = Gtk.Label(css_classes=["dim-label"], valign=Gtk.Align.CENTER)
+        self.device_row.add_suffix(self.battery_label)
+        group.add(self.device_row)
+        self.refresh_battery_info()
+        return group
+
+    def refresh_battery_info(self):
+        capacity = read_sysfs(f"{BATTERY_DIR}/capacity")
+        full = read_sysfs(f"{BATTERY_DIR}/charge_full") or read_sysfs(f"{BATTERY_DIR}/energy_full")
+        design = read_sysfs(f"{BATTERY_DIR}/charge_full_design") or read_sysfs(f"{BATTERY_DIR}/energy_full_design")
+        parts = []
+        if capacity:
+            parts.append(f"{capacity}%")
+        if full and design and int(design) > 0:
+            parts.append(f"health {min(100, round(100 * int(full) / int(design)))}%")
+        self.battery_label.set_label(" · ".join(parts))
+        return GLib.SOURCE_CONTINUE
+
+    def build_performance(self):
+        group = Adw.PreferencesGroup(title="Performance mode")
+        self.profile_buttons = {}
+        first = None
+        for choice in self.prop("PlatformProfileChoices") or []:
+            label, desc = PROFILE_LABELS.get(choice, (choice.replace("-", " ").capitalize(), ""))
+            check = Gtk.CheckButton(valign=Gtk.Align.CENTER)
+            if first:
+                check.set_group(first)
+            first = first or check
+            row = Adw.ActionRow(title=label, subtitle=desc, activatable_widget=check)
+            row.add_prefix(check)
+            check.connect("toggled", self.on_profile_toggled, choice)
+            self.profile_buttons[choice] = check
+            group.add(row)
+        return group
+
+    def build_battery(self):
+        group = Adw.PreferencesGroup(
+            title="Battery",
+            description="Stop charging before full to extend battery lifespan when the laptop stays plugged in.",
+        )
+        self.protect_row = Adw.SwitchRow(title="Protect battery", subtitle="Limit the maximum charge level")
+        self.protect_row.connect("notify::active", self.on_protect_toggled)
+        group.add(self.protect_row)
+        self.limit_row = Adw.SpinRow.new_with_range(50, 95, 5)
+        self.limit_row.set_title("Maximum charge")
+        self.limit_row.set_subtitle("Percent")
+        self.limit_row.connect("notify::value", self.on_limit_changed)
+        group.add(self.limit_row)
+        return group
+
+    def build_keyboard(self):
+        group = Adw.PreferencesGroup(title="Keyboard")
+        maximum = self.prop("KeyboardBacklightMax") or 3
+        self.kbd_scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 0, maximum, 1)
+        self.kbd_scale.set_hexpand(True)
+        self.kbd_scale.set_draw_value(False)
+        self.kbd_scale.set_round_digits(0)
+        for i in range(maximum + 1):
+            self.kbd_scale.add_mark(i, Gtk.PositionType.BOTTOM, "Off" if i == 0 else str(i))
+        self.kbd_scale.connect("value-changed", self.on_kbd_changed)
+        row = Adw.ActionRow(title="Backlight")
+        row.add_suffix(self.kbd_scale)
+        group.add(row)
+        return group
+
+    def build_hardware(self, features):
+        rows = [
+            ("block-recording", "BlockRecording", "SetBlockRecording", "Block camera and microphone",
+             "Disable recording devices at the firmware level"),
+            ("usb-charging", "UsbCharging", "SetUsbCharging", "USB charging",
+             "Charge devices from USB ports while the laptop is off"),
+            ("power-on-lid-open", "PowerOnLidOpen", "SetPowerOnLidOpen", "Power on when lid opens",
+             "Start the laptop automatically when the lid is opened"),
+        ]
+        self.switches = {}
+        group = Adw.PreferencesGroup(title="Hardware")
+        for feature, prop, method, title, subtitle in rows:
+            if feature not in features:
+                continue
+            row = Adw.SwitchRow(title=title, subtitle=subtitle)
+            row.connect("notify::active", self.on_switch_toggled, method)
+            self.switches[prop] = row
+            group.add(row)
+        return group if self.switches else None
+
+    # -- state sync ---------------------------------------------------------
+
+    def sync(self):
+        self.updating = True
+        try:
+            profile = self.prop("PlatformProfile")
+            if profile in getattr(self, "profile_buttons", {}):
+                self.profile_buttons[profile].set_active(True)
+            threshold = self.prop("ChargeEndThreshold")
+            if threshold and hasattr(self, "protect_row"):
+                protected = threshold < 100
+                self.protect_row.set_active(protected)
+                self.limit_row.set_sensitive(protected)
+                if protected:
+                    self.limit_row.set_value(threshold)
+            if hasattr(self, "kbd_scale"):
+                self.kbd_scale.set_value(self.prop("KeyboardBacklight") or 0)
+            for prop, row in getattr(self, "switches", {}).items():
+                row.set_active(bool(self.prop(prop)))
+        finally:
+            self.updating = False
+
+    # -- handlers -----------------------------------------------------------
+
+    def on_profile_toggled(self, check, choice):
+        if check.get_active() and not self.updating:
+            self.call("SetPlatformProfile", "(s)", choice)
+
+    def on_protect_toggled(self, row, _pspec):
+        self.limit_row.set_sensitive(row.get_active())
+        if self.updating:
+            return
+        if row.get_active():
+            self.call("SetChargeEndThreshold", "(u)", int(self.limit_row.get_value()) or DEFAULT_PROTECTION_LIMIT)
+        else:
+            self.call("SetChargeEndThreshold", "(u)", 100)
+
+    def on_limit_changed(self, row, _pspec):
+        if self.updating or not self.protect_row.get_active():
+            return
+        # Debounce so holding the spin button doesn't write every step
+        if self.threshold_timeout:
+            GLib.source_remove(self.threshold_timeout)
+
+        def apply():
+            self.threshold_timeout = 0
+            self.call("SetChargeEndThreshold", "(u)", int(row.get_value()))
+            return GLib.SOURCE_REMOVE
+
+        self.threshold_timeout = GLib.timeout_add(600, apply)
+
+    def on_kbd_changed(self, scale):
+        level = round(scale.get_value())
+        if not self.updating and level != self.prop("KeyboardBacklight"):
+            self.call("SetKeyboardBacklight", "(u)", level)
+
+    def on_switch_toggled(self, row, _pspec, method):
+        if not self.updating:
+            self.call(method, "(b)", row.get_active())
+
+
+class SettingsApp(Adw.Application):
+    def __init__(self):
+        super().__init__(application_id=APP_ID, flags=Gio.ApplicationFlags.DEFAULT_FLAGS)
+
+    def do_activate(self):
+        win = self.get_active_window()
+        if not win:
+            win = SettingsWindow(self, self.connect_proxy())
+        win.present()
+
+    @staticmethod
+    def connect_proxy():
+        bus = Gio.BusType.SESSION if os.environ.get("GALAXYBOOK_BUS") == "session" else Gio.BusType.SYSTEM
+        try:
+            return Gio.DBusProxy.new_for_bus_sync(bus, Gio.DBusProxyFlags.NONE, None, BUS_NAME, OBJECT_PATH, IFACE, None)
+        except GLib.Error as e:
+            print(f"Could not connect to {BUS_NAME}: {e.message}", file=sys.stderr)
+            return None
+
+
+if __name__ == "__main__":
+    sys.exit(SettingsApp().run(sys.argv))

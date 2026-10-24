@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Galaxy Book Settings
+Name[pt_BR]=Configurações do Galaxy Book
+Comment=Performance mode, battery protection and Samsung hardware features
+Comment[pt_BR]=Modo de desempenho, proteção da bateria e recursos de hardware Samsung
+Exec=galaxybook-settings
+Icon=computer-laptop-symbolic
+Terminal=false
+Categories=Settings;HardwareSettings;GTK;
+Keywords=samsung;galaxy;battery;performance;keyboard;backlight;
+StartupNotify=true

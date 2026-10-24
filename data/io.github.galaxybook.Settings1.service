@@ -1,0 +1,5 @@
+[D-BUS Service]
+Name=io.github.galaxybook.Settings1
+Exec=/bin/false
+User=root
+SystemdService=galaxybookd.service
