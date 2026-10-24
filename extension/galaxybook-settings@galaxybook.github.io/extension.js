@@ -28,6 +28,54 @@ const SettingsIface = `
 </node>`;
 const SettingsProxy = Gio.DBusProxy.makeProxyWrapper(SettingsIface);
 
+const BUDS_BUS_NAME = 'io.github.galaxybook.Buds1';
+const BUDS_OBJECT_PATH = '/io/github/galaxybook/Buds1';
+
+const BudsIface = `
+<node>
+  <interface name="io.github.galaxybook.Buds1">
+    <property name="Connected" type="b" access="read"/>
+    <property name="Name" type="s" access="read"/>
+    <property name="NoiseControlModes" type="as" access="read"/>
+    <property name="BatteryLeft" type="i" access="read"/>
+    <property name="BatteryRight" type="i" access="read"/>
+    <property name="BatteryCase" type="i" access="read"/>
+    <property name="NoiseControl" type="s" access="read"/>
+    <property name="TouchpadLocked" type="b" access="read"/>
+    <method name="SetNoiseControl"><arg name="mode" type="s" direction="in"/></method>
+    <method name="SetTouchpadLocked"><arg name="locked" type="b" direction="in"/></method>
+  </interface>
+</node>`;
+const BudsProxy = Gio.DBusProxy.makeProxyWrapper(BudsIface);
+
+const NOISE_MODES = [
+    {mode: 'anc', label: 'Noise canceling'},
+    {mode: 'adaptive', label: 'Adaptive'},
+    {mode: 'ambient', label: 'Ambient sound'},
+    {mode: 'off', label: 'Off'},
+];
+
+function newProxy(Wrapper, bus, name, path, cancellable) {
+    return new Promise((resolve, reject) => {
+        new Wrapper(bus, name, path, (proxy, error) => {
+            if (error)
+                reject(error);
+            else
+                resolve(proxy);
+        }, cancellable, Gio.DBusProxyFlags.NONE);
+    });
+}
+
+function callProxy(proxy, method, value, onError) {
+    proxy[`${method}Remote`](value, (_result, error) => {
+        if (error) {
+            Gio.DBusError.strip_remote_error(error);
+            Main.notifyError('Galaxy Book', error.message);
+            onError?.();
+        }
+    });
+}
+
 const SWITCHES = [
     {feature: 'block-recording', prop: 'BlockRecording', method: 'SetBlockRecording', label: 'Block camera and microphone'},
     {feature: 'usb-charging', prop: 'UsbCharging', method: 'SetUsbCharging', label: 'USB charging while off'},
@@ -71,13 +119,7 @@ class GalaxyBookToggle extends QuickMenuToggle {
     }
 
     _call(method, value) {
-        this._proxy[`${method}Remote`](value, (_result, error) => {
-            if (error) {
-                Gio.DBusError.strip_remote_error(error);
-                Main.notifyError('Galaxy Book', error.message);
-                this._sync();
-            }
-        });
+        callProxy(this._proxy, method, value, () => this._sync());
     }
 
     _sync() {
@@ -105,17 +147,80 @@ class GalaxyBookToggle extends QuickMenuToggle {
     }
 });
 
+const BudsToggle = GObject.registerClass(
+class BudsToggle extends QuickMenuToggle {
+    _init(proxy) {
+        super._init({
+            title: 'Galaxy Buds',
+            iconName: 'audio-headphones-symbolic',
+            toggleMode: false,
+        });
+        this._proxy = proxy;
+
+        this.menu.setHeader('audio-headphones-symbolic', 'Galaxy Buds', 'Noise controls');
+        this._modeItems = NOISE_MODES.map(({mode, label}) => {
+            const item = this.menu.addAction(label, () => this._call('SetNoiseControl', mode));
+            return {mode, item};
+        });
+        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+        this._lockItem = new PopupMenu.PopupSwitchMenuItem('Lock touch controls', false);
+        this._lockItem.connect('toggled', (_item, state) => this._call('SetTouchpadLocked', state));
+        this.menu.addMenuItem(this._lockItem);
+
+        // Clicking the tile switches noise canceling on and off
+        this.connect('clicked', () => this._call('SetNoiseControl', this.checked ? 'off' : 'anc'));
+        this._propsId = proxy.connect('g-properties-changed', () => this._sync());
+        this._ownerId = proxy.connect('notify::g-name-owner', () => this._sync());
+        this._sync();
+    }
+
+    _call(method, value) {
+        callProxy(this._proxy, method, value, () => this._sync());
+    }
+
+    _sync() {
+        const connected = this._proxy.g_name_owner !== null && Boolean(this._proxy.Connected);
+        this.visible = connected;
+        if (!connected)
+            return;
+
+        const mode = this._proxy.NoiseControl;
+        this.checked = mode === 'anc';
+        this.title = this._proxy.Name || 'Galaxy Buds';
+        const levels = [['L', this._proxy.BatteryLeft], ['R', this._proxy.BatteryRight]]
+            .filter(([, level]) => level >= 0)
+            .map(([side, level]) => `${side} ${level}%`);
+        this.subtitle = levels.join(' · ') || null;
+        const modes = this._proxy.NoiseControlModes ?? [];
+        for (const {mode: itemMode, item} of this._modeItems) {
+            item.visible = modes.includes(itemMode);
+            item.setOrnament(itemMode === mode ? PopupMenu.Ornament.CHECK : PopupMenu.Ornament.NONE);
+        }
+        this._lockItem.setToggleState(Boolean(this._proxy.TouchpadLocked));
+    }
+
+    destroy() {
+        this._proxy.disconnect(this._propsId);
+        this._proxy.disconnect(this._ownerId);
+        super.destroy();
+    }
+});
+
 const GalaxyBookIndicator = GObject.registerClass(
 class GalaxyBookIndicator extends SystemIndicator {
-    _init(proxy) {
+    _init(proxy, budsProxy) {
         super._init();
         this._proxy = proxy;
-        // Panel icon shown while the camera and microphone are blocked
-        this._indicator = this._addIndicator();
-        this._indicator.iconName = 'camera-disabled-symbolic';
-        this.quickSettingsItems.push(new GalaxyBookToggle(proxy));
-        this._propsId = proxy.connect('g-properties-changed', () => this._sync());
-        this._sync();
+        if (proxy) {
+            // Panel icon shown while the camera and microphone are blocked
+            this._indicator = this._addIndicator();
+            this._indicator.iconName = 'camera-disabled-symbolic';
+            this.quickSettingsItems.push(new GalaxyBookToggle(proxy));
+            this._propsId = proxy.connect('g-properties-changed', () => this._sync());
+            this._sync();
+        }
+        if (budsProxy)
+            this.quickSettingsItems.push(new BudsToggle(budsProxy));
     }
 
     _sync() {
@@ -123,7 +228,8 @@ class GalaxyBookIndicator extends SystemIndicator {
     }
 
     destroy() {
-        this._proxy.disconnect(this._propsId);
+        if (this._propsId)
+            this._proxy.disconnect(this._propsId);
         this.quickSettingsItems.forEach(item => item.destroy());
         super.destroy();
     }
@@ -132,19 +238,28 @@ class GalaxyBookIndicator extends SystemIndicator {
 export default class GalaxyBookExtension extends Extension {
     enable() {
         this._cancellable = new Gio.Cancellable();
-        new SettingsProxy(Gio.DBus.system, BUS_NAME, OBJECT_PATH, (proxy, error) => {
-            if (error) {
-                if (!error.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))
-                    console.error(`Galaxy Book Settings: ${error.message}`);
+        const cancellable = this._cancellable;
+        const settled = (promise, what) => promise.catch(error => {
+            if (!error.matches(Gio.IOErrorEnum, Gio.IOErrorEnum.CANCELLED))
+                console.error(`Galaxy Book Settings: ${what}: ${error.message}`);
+            return null;
+        });
+
+        Promise.all([
+            settled(newProxy(SettingsProxy, Gio.DBus.system, BUS_NAME, OBJECT_PATH, cancellable), 'galaxybookd'),
+            settled(newProxy(BudsProxy, Gio.DBus.session, BUDS_BUS_NAME, BUDS_OBJECT_PATH, cancellable), 'galaxybudsd'),
+        ]).then(([proxy, budsProxy]) => {
+            if (cancellable.is_cancelled())
                 return;
-            }
-            if (!proxy.Features) {
+            if (proxy && !proxy.Features) {
                 console.warn('Galaxy Book Settings: galaxybookd is not running');
-                return;
+                proxy = null;
             }
-            this._indicator = new GalaxyBookIndicator(proxy);
+            if (!proxy && !budsProxy)
+                return;
+            this._indicator = new GalaxyBookIndicator(proxy, budsProxy);
             Main.panel.statusArea.quickSettings.addExternalIndicator(this._indicator);
-        }, this._cancellable, Gio.DBusProxyFlags.NONE);
+        });
     }
 
     disable() {

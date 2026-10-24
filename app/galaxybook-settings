@@ -17,6 +17,9 @@ APP_ID = "io.github.galaxybook.Settings"
 BUS_NAME = "io.github.galaxybook.Settings1"
 OBJECT_PATH = "/io/github/galaxybook/Settings1"
 IFACE = "io.github.galaxybook.Settings1"
+BUDS_BUS_NAME = "io.github.galaxybook.Buds1"
+BUDS_OBJECT_PATH = "/io/github/galaxybook/Buds1"
+BUDS_IFACE = "io.github.galaxybook.Buds1"
 
 # Names Samsung Settings uses on Windows for each platform profile
 PROFILE_LABELS = {
@@ -28,6 +31,29 @@ PROFILE_LABELS = {
 DEFAULT_PROTECTION_LIMIT = 80
 BATTERY_DIR = "/sys/class/power_supply/BAT1"
 
+# Names the Galaxy Wearable app uses
+NOISE_CONTROL_LABELS = {
+    "anc": ("Noise canceling", "Block out background noise"),
+    "adaptive": ("Adaptive", "Adjust to your surroundings automatically"),
+    "ambient": ("Ambient sound", "Hear your surroundings"),
+    "off": ("Off", "No noise control"),
+}
+EQUALIZER_LABELS = {
+    "off": "Normal",
+    "bass-boost": "Bass boost",
+    "soft": "Soft",
+    "dynamic": "Dynamic",
+    "clear": "Clear",
+    "treble-boost": "Treble boost",
+}
+PLACEMENT_LABELS = {
+    "wearing": "in ear",
+    "idle": "out of ear",
+    "in-case": "in case",
+    "case-closed": "in case",
+    "disconnected": "not connected",
+}
+
 
 def read_sysfs(path, default=None):
     try:
@@ -37,30 +63,52 @@ def read_sysfs(path, default=None):
         return default
 
 
+def call_proxy(proxy, toasts, method, signature, args, on_error=None):
+    def done(proxy, result):
+        try:
+            proxy.call_finish(result)
+        except GLib.Error as e:
+            Gio.DBusError.strip_remote_error(e)
+            toasts.add_toast(Adw.Toast(title=e.message, timeout=5))
+            if on_error:
+                on_error()
+
+    proxy.call(method, GLib.Variant(signature, args), Gio.DBusCallFlags.NONE, -1, None, done)
+
+
+def service_unavailable(service):
+    return Adw.StatusPage(
+        icon_name="dialog-warning-symbolic",
+        title="Service not available",
+        description=f"The {service} service is not running.\nInstall it with ./install.sh and try again.",
+    )
+
+
 class SettingsWindow(Adw.ApplicationWindow):
-    def __init__(self, app, proxy):
+    def __init__(self, app, proxy, buds_proxy):
         super().__init__(application=app, title="Galaxy Book Settings", default_width=560, default_height=720)
         self.proxy = proxy
         self.updating = False
         self.threshold_timeout = 0
 
         self.toasts = Adw.ToastOverlay()
+        stack = Adw.ViewStack()
+        header = Adw.HeaderBar(title_widget=Adw.ViewSwitcher(stack=stack, policy=Adw.ViewSwitcherPolicy.WIDE))
         toolbar = Adw.ToolbarView()
-        toolbar.add_top_bar(Adw.HeaderBar())
+        toolbar.add_top_bar(header)
         toolbar.set_content(self.toasts)
+        self.toasts.set_child(stack)
         self.set_content(toolbar)
 
-        if proxy is None or not proxy.get_cached_property_names():
-            self.toasts.set_child(Adw.StatusPage(
-                icon_name="dialog-warning-symbolic",
-                title="Service not available",
-                description="The galaxybookd service is not running.\n"
-                            "Install it with sudo ./install.sh and try again.",
-            ))
-            return
+        stack.add_titled_with_icon(self.build_laptop_page(), "laptop", "Laptop", "computer-laptop-symbolic")
+        buds_page = BudsPage(buds_proxy, self.toasts) if buds_proxy else service_unavailable("galaxybudsd")
+        stack.add_titled_with_icon(buds_page, "buds", "Galaxy Buds", "audio-headphones-symbolic")
+
+    def build_laptop_page(self):
+        if self.proxy is None or not self.proxy.get_cached_property_names():
+            return service_unavailable("galaxybookd")
 
         page = Adw.PreferencesPage()
-        self.toasts.set_child(page)
         features = self.prop("Features") or []
 
         page.add(self.build_device_info())
@@ -74,9 +122,10 @@ class SettingsWindow(Adw.ApplicationWindow):
         if hw_group:
             page.add(hw_group)
 
-        proxy.connect("g-properties-changed", lambda *_: self.sync())
+        self.proxy.connect("g-properties-changed", lambda *_: self.sync())
         self.sync()
         GLib.timeout_add_seconds(30, self.refresh_battery_info)
+        return page
 
     # -- helpers ------------------------------------------------------------
 
@@ -85,15 +134,7 @@ class SettingsWindow(Adw.ApplicationWindow):
         return value.unpack() if value is not None else None
 
     def call(self, method, signature, *args):
-        def done(proxy, result):
-            try:
-                proxy.call_finish(result)
-            except GLib.Error as e:
-                Gio.DBusError.strip_remote_error(e)
-                self.toasts.add_toast(Adw.Toast(title=e.message, timeout=5))
-                self.sync()
-
-        self.proxy.call(method, GLib.Variant(signature, args), Gio.DBusCallFlags.NONE, -1, None, done)
+        call_proxy(self.proxy, self.toasts, method, signature, args, self.sync)
 
     # -- sections -----------------------------------------------------------
 
@@ -251,6 +292,119 @@ class SettingsWindow(Adw.ApplicationWindow):
             self.call(method, "(b)", row.get_active())
 
 
+class BudsPage(Adw.PreferencesPage):
+    """Battery, noise control, equalizer and touch lock for Galaxy Buds, via galaxybudsd."""
+
+    def __init__(self, proxy, toasts):
+        super().__init__()
+        self.proxy = proxy
+        self.toasts = toasts
+        self.updating = False
+
+        group = Adw.PreferencesGroup()
+        self.status_row = Adw.ActionRow()
+        self.status_row.add_prefix(Gtk.Image(icon_name="audio-headphones-symbolic", pixel_size=32))
+        self.battery_label = Gtk.Label(css_classes=["dim-label"], valign=Gtk.Align.CENTER)
+        self.status_row.add_suffix(self.battery_label)
+        group.add(self.status_row)
+        self.add(group)
+
+        self.controls = []
+        noise = Adw.PreferencesGroup(title="Noise controls")
+        self.noise_buttons = {}
+        self.noise_rows = {}
+        first = None
+        for mode, (label, desc) in NOISE_CONTROL_LABELS.items():
+            check = Gtk.CheckButton(valign=Gtk.Align.CENTER)
+            if first:
+                check.set_group(first)
+            first = first or check
+            row = Adw.ActionRow(title=label, subtitle=desc, activatable_widget=check)
+            row.add_prefix(check)
+            check.connect("toggled", self.on_noise_toggled, mode)
+            self.noise_buttons[mode] = check
+            self.noise_rows[mode] = row
+            noise.add(row)
+        self.add(noise)
+        self.controls.append(noise)
+
+        sound = Adw.PreferencesGroup(title="Sound and touch")
+        self.eq_keys = list(EQUALIZER_LABELS)
+        self.eq_row = Adw.ComboRow(title="Equalizer", model=Gtk.StringList.new(list(EQUALIZER_LABELS.values())))
+        self.eq_row.connect("notify::selected", self.on_eq_selected)
+        sound.add(self.eq_row)
+        self.lock_row = Adw.SwitchRow(title="Lock touch controls", subtitle="Ignore taps on the earbuds")
+        self.lock_row.connect("notify::active", self.on_lock_toggled)
+        sound.add(self.lock_row)
+        self.add(sound)
+        self.controls.append(sound)
+
+        proxy.connect("g-properties-changed", lambda *_: self.sync())
+        proxy.connect("notify::g-name-owner", lambda *_: self.sync())
+        self.sync()
+
+    def prop(self, name):
+        value = self.proxy.get_cached_property(name)
+        return value.unpack() if value is not None else None
+
+    def call(self, method, signature, *args):
+        call_proxy(self.proxy, self.toasts, method, signature, args, self.sync)
+
+    def sync(self):
+        self.updating = True
+        try:
+            running = self.proxy.get_name_owner() is not None
+            connected = running and bool(self.prop("Connected"))
+            for group in self.controls:
+                group.set_sensitive(connected)
+            if not running:
+                self.status_row.set_title("Galaxy Buds")
+                self.status_row.set_subtitle("The galaxybudsd service is not running")
+                self.battery_label.set_label("")
+                return
+            if not connected:
+                self.status_row.set_title("Galaxy Buds")
+                self.status_row.set_subtitle("Not connected. Connect the earbuds in Bluetooth settings.")
+                self.battery_label.set_label("")
+                return
+
+            self.status_row.set_title(self.prop("Name") or self.prop("Model") or "Galaxy Buds")
+            modes = self.prop("NoiseControlModes") or list(NOISE_CONTROL_LABELS)
+            for mode, row in self.noise_rows.items():
+                row.set_visible(mode in modes)
+            left, right = self.prop("PlacementLeft"), self.prop("PlacementRight")
+            self.status_row.set_subtitle(
+                f"Left {PLACEMENT_LABELS.get(left, left)} · Right {PLACEMENT_LABELS.get(right, right)}")
+            parts = []
+            for label, prop in (("L", "BatteryLeft"), ("R", "BatteryRight"), ("Case", "BatteryCase")):
+                level = self.prop(prop)
+                if level is not None and level >= 0:
+                    parts.append(f"{label} {level}%")
+            self.battery_label.set_label(" · ".join(parts))
+
+            mode = self.prop("NoiseControl")
+            if mode in self.noise_buttons:
+                self.noise_buttons[mode].set_active(True)
+            preset = self.prop("Equalizer")
+            if preset in self.eq_keys:
+                self.eq_row.set_selected(self.eq_keys.index(preset))
+            self.lock_row.set_active(bool(self.prop("TouchpadLocked")))
+        finally:
+            self.updating = False
+
+    def on_noise_toggled(self, check, mode):
+        if check.get_active() and not self.updating:
+            self.call("SetNoiseControl", "(s)", mode)
+
+    def on_eq_selected(self, row, _pspec):
+        if not self.updating:
+            self.call("SetEqualizer", "(s)", self.eq_keys[row.get_selected()])
+
+    def on_lock_toggled(self, row, _pspec):
+        if not self.updating:
+            self.call("SetTouchpadLocked", "(b)", row.get_active())
+
+
 class SettingsApp(Adw.Application):
     def __init__(self):
         super().__init__(application_id=APP_ID, flags=Gio.ApplicationFlags.DEFAULT_FLAGS)
@@ -258,16 +412,20 @@ class SettingsApp(Adw.Application):
     def do_activate(self):
         win = self.get_active_window()
         if not win:
-            win = SettingsWindow(self, self.connect_proxy())
+            bus = Gio.BusType.SESSION if os.environ.get("GALAXYBOOK_BUS") == "session" else Gio.BusType.SYSTEM
+            win = SettingsWindow(
+                self,
+                self.connect_proxy(bus, BUS_NAME, OBJECT_PATH, IFACE),
+                self.connect_proxy(Gio.BusType.SESSION, BUDS_BUS_NAME, BUDS_OBJECT_PATH, BUDS_IFACE),
+            )
         win.present()
 
     @staticmethod
-    def connect_proxy():
-        bus = Gio.BusType.SESSION if os.environ.get("GALAXYBOOK_BUS") == "session" else Gio.BusType.SYSTEM
+    def connect_proxy(bus, name, path, iface):
         try:
-            return Gio.DBusProxy.new_for_bus_sync(bus, Gio.DBusProxyFlags.NONE, None, BUS_NAME, OBJECT_PATH, IFACE, None)
+            return Gio.DBusProxy.new_for_bus_sync(bus, Gio.DBusProxyFlags.NONE, None, name, path, iface, None)
         except GLib.Error as e:
-            print(f"Could not connect to {BUS_NAME}: {e.message}", file=sys.stderr)
+            print(f"Could not connect to {name}: {e.message}", file=sys.stderr)
             return None
 
 

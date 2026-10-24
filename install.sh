@@ -26,6 +26,14 @@ sudo systemctl daemon-reload
 sudo systemctl reload dbus 2>/dev/null || true
 sudo systemctl enable --now galaxybookd.service
 
+echo "==> Installing galaxybudsd user service (sudo)"
+sudo install -Dm755 "$HERE/daemon/galaxybudsd.py" /usr/libexec/galaxybook-settings/galaxybudsd
+sudo install -Dm644 "$HERE/data/io.github.galaxybook.Buds1.service" /usr/share/dbus-1/services/io.github.galaxybook.Buds1.service
+sudo install -Dm644 "$HERE/data/galaxybudsd.service" /usr/lib/systemd/user/galaxybudsd.service
+systemctl --user daemon-reload
+systemctl --user enable galaxybudsd.service
+systemctl --user restart galaxybudsd.service
+
 echo "==> Installing Galaxy Book Settings app (sudo)"
 sudo install -Dm755 "$HERE/app/galaxybook-settings" "$PREFIX/bin/galaxybook-settings"
 sudo install -Dm644 "$HERE/data/io.github.galaxybook.Settings.desktop" "$PREFIX/share/applications/io.github.galaxybook.Settings.desktop"
@@ -40,6 +48,7 @@ gnome-extensions enable "$UUID" 2>/dev/null || true
 
 echo
 systemctl --no-pager --lines=3 status galaxybookd.service || true
+systemctl --user --no-pager --lines=3 status galaxybudsd.service || true
 echo
 echo "Done. Open 'Galaxy Book Settings' from the app grid."
 echo "The Quick Settings tile appears after you log out and back in (Wayland can't reload GNOME Shell)."
