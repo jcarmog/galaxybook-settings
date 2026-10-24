@@ -62,7 +62,7 @@ Devices found on the Windows install:
   cat /sys/class/power_supply/BAT1/charge_control_end_threshold   # expect 80
   journalctl -u galaxybookd -b --no-pager
   ```
-- [ ] Put the project under git (`git init` + first commit)
+- [x] Put the project under git (branch `main`, first commit `3500c89`; `core.fileMode=false` because the drive is NTFS)
 
 ## Phase 2 options (not started)
 
