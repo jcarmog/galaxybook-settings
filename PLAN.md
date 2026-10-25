@@ -182,8 +182,12 @@ Design:
 - [x] **WhatsApp chat tags end in a newline**, which wraps the NotificationRecord header over 3 lines; the parser
       missed those records (only the group summary got through). Fixed 2026-10-24: header lines are joined;
       a new WhatsApp message was relayed at 22:04:11 with the deployed fix
-- [ ] Wireless debugging drops by itself (adb lost at 21:50:14 and 22:04:13): find out why (phone sleep,
-      Wi-Fi power saving, Android's timeout) and whether the service should say so in the app/tile
+- [x] Wireless debugging drops by itself (adb lost at 21:50:14 and 22:04:13): find out why
+      (2026-10-24, from the phone's logcat: **Samsung Auto Blocker** (`com.samsung.android.rampart`) turns
+      `adb_wifi_enabled` off when it switches on ("ADB is blocked by Auto Blocker"). Its "Turn on automatically"
+      option (`rampart_auto_enabled_switch_enabled=1`) schedules it back on after it is turned off. Not screen-off,
+      not Wi-Fi. Fix on the phone: Settings › Security and privacy › Auto Blocker › turn off "Turn on automatically")
+- [ ] App/tile hint when adb drops: "Wireless debugging was turned off; if this keeps happening, check Auto Blocker"
 - [x] **Debian adb 34 (/usr/bin/adb) has no mDNS** and **scrcpy 1.25 fails on Android 17**
       (`NoSuchMethodException: SurfaceControl.createDisplay`). Fixed 2026-10-24: official scrcpy v5.0.1 (checksum OK)
       unpacked in `~/.local/opt/scrcpy-linux-x86_64-v5.0.1`, with its adb 37.0.1; `~/.local/bin/{scrcpy,adb}` link to it,
