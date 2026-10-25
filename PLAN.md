@@ -168,10 +168,16 @@ Design:
 - [x] Send a file over Bluetooth (accept on the phone) from the app and from Nautilus (right-click › Scripts)
       (2026-10-24: received on the phone via D-Bus `SendFiles`, the app's Send files button and the Nautilus script)
 - [ ] Receive an SMS and check the desktop notification (MAP event or the 120 s poll)
+      (2026-10-24: not yet seen over MAP: the test messages never reached the phone's SMS inbox, likely RCS chats,
+      which MAP doesn't expose. Retest with a plain SMS from another phone while adb is off)
 - [x] Pair adb over wireless debugging from the app; check exact battery, adb push
       (2026-10-24: paired from the app on the second try (the first never reached the service); battery 30% from adb;
       SendFiles used adb push into Download with no prompt on the phone)
-- [ ] Check app notifications relayed over adb
+- [x] Check app notifications relayed over adb
+      (2026-10-24: a WhatsApp message was relayed to the desktop; the journal now logs each relay by package/route)
+- [ ] **Android 17 writes notification flags by name** (`flags=ONGOING_EVENT|CAN_COLORIZE`), so ongoing, foreground
+      and group-summary notifications were not filtered. Fixed in the source (`parse_flags`, tested on a real dump);
+      deploy it and check an ongoing notification (music, navigation) is not relayed
 - [x] **Debian adb 34 (/usr/bin/adb) has no mDNS** and **scrcpy 1.25 fails on Android 17**
       (`NoSuchMethodException: SurfaceControl.createDisplay`). Fixed 2026-10-24: official scrcpy v5.0.1 (checksum OK)
       unpacked in `~/.local/opt/scrcpy-linux-x86_64-v5.0.1`, with its adb 37.0.1; `~/.local/bin/{scrcpy,adb}` link to it,

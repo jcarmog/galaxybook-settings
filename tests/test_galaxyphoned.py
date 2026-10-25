@@ -106,6 +106,20 @@ class NotificationTests(unittest.TestCase):
         # Group summary (0x200) and the ongoing media notification (0x2 | 0x40) are dropped
         self.assertEqual(keys, ["0|com.whatsapp|1|null|10234", "0|com.google.android.gm|4|null|10150"])
 
+    def test_parse_flags(self):
+        self.assertEqual(phoned.parse_flags("0x62"), 0x62)
+        self.assertEqual(phoned.parse_flags("0"), 0)
+        self.assertEqual(phoned.parse_flags("ONGOING_EVENT|CAN_COLORIZE"), phoned.FLAG_ONGOING_EVENT)
+        self.assertEqual(phoned.parse_flags("AUTO_CANCEL|GROUP_SUMMARY"), phoned.FLAG_GROUP_SUMMARY)
+        self.assertEqual(phoned.parse_flags("AUTO_CANCEL"), 0)
+
+    def test_android_17_named_flags(self):
+        # Android 17 writes flag names, both in the header and on the flags= line
+        text = DUMPSYS_NOTIFICATION.replace("flags=0x62", "flags=ONGOING_EVENT|FOREGROUND_SERVICE|CAN_COLORIZE")
+        text = text.replace("flags=0x210", "flags=AUTO_CANCEL|GROUP_SUMMARY").replace("flags=0x10", "flags=AUTO_CANCEL")
+        keys = [r["key"] for r in phoned.parse_notifications(text) if phoned.forwardable(r)]
+        self.assertEqual(keys, ["0|com.whatsapp|1|null|10234", "0|com.google.android.gm|4|null|10150"])
+
     def test_tracker_primes_then_reports_new_and_changed(self):
         tracker = phoned.NotificationTracker()
         records = phoned.parse_notifications(DUMPSYS_NOTIFICATION)

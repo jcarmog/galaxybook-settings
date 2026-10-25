@@ -46,6 +46,9 @@ FLAG_ONGOING_EVENT = 0x2
 FLAG_FOREGROUND_SERVICE = 0x40
 FLAG_GROUP_SUMMARY = 0x200
 SKIP_FLAGS = FLAG_ONGOING_EVENT | FLAG_FOREGROUND_SERVICE | FLAG_GROUP_SUMMARY
+# Android 17 prints flags by name ("ONGOING_EVENT|CAN_COLORIZE"); other names don't matter here
+FLAG_NAMES = {"ONGOING_EVENT": FLAG_ONGOING_EVENT, "FOREGROUND_SERVICE": FLAG_FOREGROUND_SERVICE,
+              "GROUP_SUMMARY": FLAG_GROUP_SUMMARY}
 SKIP_PACKAGES = {"android", "com.android.systemui", "com.android.shell", "com.android.providers.downloads"}
 BATTERY_STATUS_CHARGING = 2
 
@@ -174,7 +177,16 @@ def parse_battery(text):
 
 RECORD_RE = re.compile(r"NotificationRecord\(0x[0-9a-f]+: pkg=(\S+) .*?key=(\S+): Notification\(")
 EXTRA_RE = re.compile(r"^\s*android\.(title|text|bigText)=\w+ \((.*)\)\s*$")
-FLAGS_RE = re.compile(r"^\s*flags=0x([0-9a-fA-F]+)\s*$")
+FLAGS_RE = re.compile(r"^\s*flags=(\S+)\s*$")
+
+
+def parse_flags(value):
+    """Notification flags written as hex (Android 14-16) or as names joined by | (Android 17)."""
+    if value.lower().startswith("0x"):
+        return int(value, 16)
+    if value.isdigit():
+        return int(value)
+    return sum(FLAG_NAMES.get(name, 0) for name in set(value.split("|")))
 
 
 def parse_notifications(text):
@@ -194,7 +206,7 @@ def parse_notifications(text):
             continue
         match = FLAGS_RE.match(line)
         if match and not current.get("_flags_seen"):
-            current["flags"] = int(match.group(1), 16)
+            current["flags"] = parse_flags(match.group(1))
             current["_flags_seen"] = True
             continue
         match = EXTRA_RE.match(line)
@@ -637,6 +649,7 @@ class BluezWatcher:
                     msg = unread[path]
                     if msg.get("Type", "").startswith(("sms", "mms")):
                         sender = msg.get("Sender") or msg.get("SenderAddress") or "Unknown sender"
+                        log.info("Relayed an SMS over Bluetooth (MAP)")
                         self.service.notifier.show(sender, msg.get("Subject") or msg.get("Text", ""),
                                                    app_name="Messages", icon="mail-unread-symbolic")
             self.map_seen = (self.map_seen or set()) | set(unread)
@@ -794,6 +807,8 @@ class AdbWatcher:
     def _poll_notifications(self):
         def got(out):
             for record in self.tracker.new(parse_notifications(out)):
+                # App and route only: the title and text stay out of the journal
+                log.info("Relayed a notification over adb from %s", record["pkg"])
                 self.service.notifier.show(record["title"] or app_label(record["pkg"]), record["text"],
                                            app_name=app_label(record["pkg"]))
 
