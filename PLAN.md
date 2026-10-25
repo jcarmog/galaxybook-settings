@@ -175,9 +175,15 @@ Design:
       SendFiles used adb push into Download with no prompt on the phone)
 - [x] Check app notifications relayed over adb
       (2026-10-24: a WhatsApp message was relayed to the desktop; the journal now logs each relay by package/route)
-- [ ] **Android 17 writes notification flags by name** (`flags=ONGOING_EVENT|CAN_COLORIZE`), so ongoing, foreground
-      and group-summary notifications were not filtered. Fixed in the source (`parse_flags`, tested on a real dump);
-      deploy it and check an ongoing notification (music, navigation) is not relayed
+- [x] **Android 17 writes notification flags by name** (`flags=ONGOING_EVENT|CAN_COLORIZE`), so ongoing, foreground
+      and group-summary notifications were not filtered. Fixed with `parse_flags` (2026-10-24, deployed): on the phone's
+      real dumps the ongoing wireless-debugging notification and the WhatsApp group summary are skipped.
+      A media player notification was not seen on the phone yet, so music specifically is unchecked
+- [x] **WhatsApp chat tags end in a newline**, which wraps the NotificationRecord header over 3 lines; the parser
+      missed those records (only the group summary got through). Fixed 2026-10-24: header lines are joined;
+      a new WhatsApp message was relayed at 22:04:11 with the deployed fix
+- [ ] Wireless debugging drops by itself (adb lost at 21:50:14 and 22:04:13): find out why (phone sleep,
+      Wi-Fi power saving, Android's timeout) and whether the service should say so in the app/tile
 - [x] **Debian adb 34 (/usr/bin/adb) has no mDNS** and **scrcpy 1.25 fails on Android 17**
       (`NoSuchMethodException: SurfaceControl.createDisplay`). Fixed 2026-10-24: official scrcpy v5.0.1 (checksum OK)
       unpacked in `~/.local/opt/scrcpy-linux-x86_64-v5.0.1`, with its adb 37.0.1; `~/.local/bin/{scrcpy,adb}` link to it,

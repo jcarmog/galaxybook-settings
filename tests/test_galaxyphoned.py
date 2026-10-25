@@ -120,6 +120,26 @@ class NotificationTests(unittest.TestCase):
         keys = [r["key"] for r in phoned.parse_notifications(text) if phoned.forwardable(r)]
         self.assertEqual(keys, ["0|com.whatsapp|1|null|10234", "0|com.google.android.gm|4|null|10150"])
 
+    def test_wrapped_record_header(self):
+        # Android 17 + WhatsApp: the tag ends in a newline, splitting the header and the key line
+        text = (
+            "  Notification List:\n"
+            "    NotificationRecord(0x0776e0aa: pkg=com.whatsapp user=UserHandle{0} id=1 tag=uLKpE+1cv9=\n"
+            " importance=4 key=0|com.whatsapp|1|uLKpE+1cv9=\n"
+            "|10391: Notification(channel=individual_chat_defaults_4 contentView=null)\n"
+            "      flags=ONLY_ALERT_ONCE\n"
+            "      key=0|com.whatsapp|1|uLKpE+1cv9=\n"
+            "|10391\n"
+            "      extras={\n"
+            "        android.title=String (Maria)\n"
+            "        android.text=String (Chego em 10 min)\n"
+            "      }\n"
+        )
+        [record] = phoned.parse_notifications(text)
+        self.assertEqual((record["key"], record["pkg"], record["title"], record["text"]),
+                         ("0|com.whatsapp|1|uLKpE+1cv9=|10391", "com.whatsapp", "Maria", "Chego em 10 min"))
+        self.assertTrue(phoned.forwardable(record))
+
     def test_tracker_primes_then_reports_new_and_changed(self):
         tracker = phoned.NotificationTracker()
         records = phoned.parse_notifications(DUMPSYS_NOTIFICATION)

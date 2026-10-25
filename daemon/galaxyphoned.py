@@ -194,7 +194,14 @@ def parse_notifications(text):
     key, pkg, flags, title and text. Records listed twice keep the first entry."""
     records = {}
     current = None
-    for line in text.splitlines():
+    lines = iter(text.splitlines())
+    for line in lines:
+        if "NotificationRecord(0x" in line:
+            # A tag with a newline in it (WhatsApp chats) wraps the header over several lines
+            for _ in range(4):
+                if ": Notification(" in line:
+                    break
+                line += next(lines, "")
         match = RECORD_RE.search(line)
         if match:
             pkg, key = match.groups()
