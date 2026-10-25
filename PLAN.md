@@ -168,10 +168,19 @@ Design:
 - [x] Send a file over Bluetooth (accept on the phone) from the app and from Nautilus (right-click › Scripts)
       (2026-10-24: received on the phone via D-Bus `SendFiles`, the app's Send files button and the Nautilus script)
 - [ ] Receive an SMS and check the desktop notification (MAP event or the 120 s poll)
-- [ ] Pair adb over wireless debugging from the app; check exact battery, app notifications, adb push
-- [ ] Install scrcpy (`sudo apt install scrcpy`, 1.25 in the Zorin repo) and test Mirror screen
-      (2026-10-24: apt `scrcpy` 1.25 and `adb` 34 now installed in /usr/bin, so install.sh writes no drop-in
-      and the service uses those; still to test Mirror screen, which needs adb connected)
+- [x] Pair adb over wireless debugging from the app; check exact battery, adb push
+      (2026-10-24: paired from the app on the second try (the first never reached the service); battery 30% from adb;
+      SendFiles used adb push into Download with no prompt on the phone)
+- [ ] Check app notifications relayed over adb
+- [x] **Debian adb 34 (/usr/bin/adb) has no mDNS** and **scrcpy 1.25 fails on Android 17**
+      (`NoSuchMethodException: SurfaceControl.createDisplay`). Fixed 2026-10-24: official scrcpy v5.0.1 (checksum OK)
+      unpacked in `~/.local/opt/scrcpy-linux-x86_64-v5.0.1`, with its adb 37.0.1; `~/.local/bin/{scrcpy,adb}` link to it,
+      so install.sh writes the drop-in for both. adb now reconnects to the phone by itself over mDNS
+- [ ] Log AdbPair input errors in the service (they are only shown in the app now)
+- [x] Test Mirror screen with scrcpy 5.0.1 (apt's 1.25 is too old for Android 17, see above)
+      (2026-10-24: StartMirroring opened the S26 Ultra screen in scrcpy 5.0.1)
+- [ ] Press Mirror screen again while scrcpy is open: the extension should raise the existing window
+      (RaiseMirroring signal; the service logged it on 2026-10-24, the raise itself is not confirmed yet)
 - [ ] After logout/login: Galaxy phone tile
 - [x] Commit phase 3 (2026-10-24)
 

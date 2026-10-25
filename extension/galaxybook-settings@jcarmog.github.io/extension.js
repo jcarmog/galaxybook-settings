@@ -62,6 +62,7 @@ const PhoneIface = `
     <property name="AdbConnected" type="b" access="read"/>
     <property name="CanMirror" type="b" access="read"/>
     <method name="StartMirroring"/>
+    <signal name="RaiseMirroring"><arg name="pids" type="au"/></signal>
   </interface>
 </node>`;
 const PhoneProxy = Gio.DBusProxy.makeProxyWrapper(PhoneIface);
@@ -254,7 +255,17 @@ class PhoneToggle extends QuickMenuToggle {
         this.connect('clicked', () => this.menu.open());
         this._propsId = proxy.connect('g-properties-changed', () => this._sync());
         this._ownerId = proxy.connect('notify::g-name-owner', () => this._sync());
+        // galaxyphoned can't raise windows on Wayland, so it asks us when mirroring is already open
+        this._raiseId = proxy.connectSignal('RaiseMirroring', (_proxy, _sender, [pids]) => this._raiseMirroring(pids));
         this._sync();
+    }
+
+    _raiseMirroring(pids) {
+        const windows = global.get_window_actors().map(actor => actor.meta_window);
+        const window = windows.find(w => pids.includes(w.get_pid())) ??
+            windows.find(w => w.get_wm_class()?.toLowerCase() === 'scrcpy');
+        if (window)
+            Main.activateWindow(window);
     }
 
     _sync() {
@@ -280,6 +291,7 @@ class PhoneToggle extends QuickMenuToggle {
     destroy() {
         this._proxy.disconnect(this._propsId);
         this._proxy.disconnect(this._ownerId);
+        this._proxy.disconnectSignal(this._raiseId);
         super.destroy();
     }
 });

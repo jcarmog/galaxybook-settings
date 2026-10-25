@@ -75,6 +75,7 @@ INTROSPECTION_XML = f"""
     <property name="CanMirror" type="b" access="read"/>
     <method name="SendFiles"><arg name="paths" type="as" direction="in"/></method>
     <method name="StartMirroring"/>
+    <signal name="RaiseMirroring"><arg name="pids" type="au"/></signal>
     <method name="AdbPair">
       <arg name="address" type="s" direction="in"/>
       <arg name="code" type="s" direction="in"/>
@@ -283,6 +284,25 @@ def run_async(argv, callback):
     proc.communicate_utf8_async(None, None, done)
 
 
+def scrcpy_pids(proc_dir="/proc"):
+    """PIDs of this user's running scrcpy processes (started by us or from a terminal)."""
+    uid = os.getuid()
+    pids = []
+    for pid in os.listdir(proc_dir):
+        if not pid.isdigit():
+            continue
+        try:
+            if os.stat(os.path.join(proc_dir, pid)).st_uid != uid:
+                continue
+            with open(os.path.join(proc_dir, pid, "cmdline"), "rb") as f:
+                argv0 = f.read().split(b"\0", 1)[0]
+        except OSError:
+            continue
+        if os.path.basename(argv0) == b"scrcpy":
+            pids.append(int(pid))
+    return sorted(pids)
+
+
 # -- D-Bus service ----------------------------------------------------------
 
 
@@ -391,6 +411,12 @@ class Service:
             raise DBusError("NotConnected", "Screen mirroring needs adb: turn on USB or wireless debugging on the phone")
         if not self.scrcpy_path:
             raise DBusError("NotSupported", "scrcpy is not installed")
+        pids = scrcpy_pids()
+        if pids:
+            # Only the shell may raise a window on Wayland: the extension listens for this
+            log.info("Screen mirroring is already running; asking the shell to raise it")
+            self.bus.emit_signal(None, OBJECT_PATH, IFACE, "RaiseMirroring", GLib.Variant("(au)", (pids,)))
+            return
         title = self.cache["Name"] or "Galaxy phone"
         try:
             Gio.Subprocess.new([self.scrcpy_path, "-s", self.cache["AdbSerial"], "--window-title", title],

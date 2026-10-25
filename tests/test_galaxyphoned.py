@@ -2,6 +2,7 @@
 
 import importlib.util
 import os
+import tempfile
 import unittest
 
 _path = os.path.join(os.path.dirname(__file__), "..", "daemon", "galaxyphoned.py")
@@ -123,6 +124,22 @@ class PhoneDetectionTests(unittest.TestCase):
         self.assertTrue(phoned.is_phone({"Paired": True, "Icon": "phone"}))
         self.assertFalse(phoned.is_phone({"Paired": True, "Icon": "audio-headset"}))
         self.assertFalse(phoned.is_phone({"Paired": False, "Icon": "phone"}))
+
+
+class ScrcpyPidsTests(unittest.TestCase):
+    def _proc(self, root, pid, argv):
+        os.makedirs(os.path.join(root, pid))
+        with open(os.path.join(root, pid, "cmdline"), "wb") as f:
+            f.write(b"\0".join(argv) + b"\0")
+
+    def test_scrcpy_pids(self):
+        with tempfile.TemporaryDirectory() as root:
+            self._proc(root, "100", [b"/usr/bin/bash"])
+            self._proc(root, "101", [b"/usr/bin/vim", b"scrcpy"])
+            os.makedirs(os.path.join(root, "self"))
+            self.assertEqual(phoned.scrcpy_pids(root), [])
+            self._proc(root, "102", [b"/home/u/.local/bin/scrcpy", b"-s", b"serial"])
+            self.assertEqual(phoned.scrcpy_pids(root), [102])
 
 
 if __name__ == "__main__":
