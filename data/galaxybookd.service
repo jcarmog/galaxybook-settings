@@ -5,7 +5,7 @@ After=power-profiles-daemon.service
 
 [Service]
 Type=dbus
-BusName=io.github.galaxybook.Settings1
+BusName=io.github.jcarmog.GalaxyBook.Settings1
 ExecStart=/usr/libexec/galaxybook-settings/galaxybookd
 StateDirectory=galaxybook-settings
 ProtectSystem=strict

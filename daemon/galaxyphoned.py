@@ -24,11 +24,11 @@ import sys
 
 from gi.repository import Gio, GLib
 
-BUS_NAME = "io.github.galaxybook.Phone1"
-OBJECT_PATH = "/io/github/galaxybook/Phone1"
-IFACE = "io.github.galaxybook.Phone1"
-ERROR_PREFIX = "io.github.galaxybook.Error."
-DESKTOP_ENTRY = "io.github.galaxybook.Settings"
+BUS_NAME = "io.github.jcarmog.GalaxyBook.Phone1"
+OBJECT_PATH = "/io/github/jcarmog/GalaxyBook/Phone1"
+IFACE = "io.github.jcarmog.GalaxyBook.Phone1"
+ERROR_PREFIX = "io.github.jcarmog.GalaxyBook.Error."
+DESKTOP_ENTRY = "io.github.jcarmog.GalaxyBook.Settings"
 
 BLUEZ = "org.bluez"
 OBEX = "org.bluez.obex"
@@ -624,6 +624,7 @@ class BluezWatcher:
 
         def created(reply, error):
             if error:
+                log.warning("OBEX push session failed: %s", error.message)
                 self.service.notifier.show(f"Could not send {what}", error.message)
                 return
             job["session"] = reply[0]
@@ -659,8 +660,10 @@ class BluezWatcher:
         if job["session"]:
             self._remove_session(job["session"])
         if job["failed"]:
+            log.warning("Bluetooth transfer of %s failed or was declined", job["what"])
             self.service.notifier.show(f"Could not send {job['what']}", "The phone declined or the transfer failed")
         else:
+            log.info("Sent %s over Bluetooth", job["what"])
             self.service.notifier.show(f"Sent {job['what']} to your phone")
 
     def close(self):

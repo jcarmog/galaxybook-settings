@@ -13,16 +13,16 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
-APP_ID = "io.github.galaxybook.Settings"
-BUS_NAME = "io.github.galaxybook.Settings1"
-OBJECT_PATH = "/io/github/galaxybook/Settings1"
-IFACE = "io.github.galaxybook.Settings1"
-BUDS_BUS_NAME = "io.github.galaxybook.Buds1"
-BUDS_OBJECT_PATH = "/io/github/galaxybook/Buds1"
-BUDS_IFACE = "io.github.galaxybook.Buds1"
-PHONE_BUS_NAME = "io.github.galaxybook.Phone1"
-PHONE_OBJECT_PATH = "/io/github/galaxybook/Phone1"
-PHONE_IFACE = "io.github.galaxybook.Phone1"
+APP_ID = "io.github.jcarmog.GalaxyBook.Settings"
+BUS_NAME = "io.github.jcarmog.GalaxyBook.Settings1"
+OBJECT_PATH = "/io/github/jcarmog/GalaxyBook/Settings1"
+IFACE = "io.github.jcarmog.GalaxyBook.Settings1"
+BUDS_BUS_NAME = "io.github.jcarmog.GalaxyBook.Buds1"
+BUDS_OBJECT_PATH = "/io/github/jcarmog/GalaxyBook/Buds1"
+BUDS_IFACE = "io.github.jcarmog.GalaxyBook.Buds1"
+PHONE_BUS_NAME = "io.github.jcarmog.GalaxyBook.Phone1"
+PHONE_OBJECT_PATH = "/io/github/jcarmog/GalaxyBook/Phone1"
+PHONE_IFACE = "io.github.jcarmog.GalaxyBook.Phone1"
 
 # Names Samsung Settings uses on Windows for each platform profile
 PROFILE_LABELS = {

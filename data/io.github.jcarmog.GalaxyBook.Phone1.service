@@ -1,4 +1,4 @@
 [D-BUS Service]
-Name=io.github.galaxybook.Phone1
+Name=io.github.jcarmog.GalaxyBook.Phone1
 Exec=/usr/libexec/galaxybook-settings/galaxyphoned
 SystemdService=galaxyphoned.service

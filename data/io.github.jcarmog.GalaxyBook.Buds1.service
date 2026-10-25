@@ -1,4 +1,4 @@
 [D-BUS Service]
-Name=io.github.galaxybook.Buds1
+Name=io.github.jcarmog.GalaxyBook.Buds1
 Exec=/usr/libexec/galaxybook-settings/galaxybudsd
 SystemdService=galaxybudsd.service

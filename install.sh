@@ -6,7 +6,7 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PREFIX=/usr/local
-UUID=galaxybook-settings@galaxybook.github.io
+UUID=galaxybook-settings@jcarmog.github.io
 
 if [[ $EUID -eq 0 ]]; then
     echo "Run as your normal user; the script calls sudo for system files." >&2
@@ -17,11 +17,22 @@ if [[ ! -d /sys/bus/platform/drivers/samsung-galaxybook ]]; then
     echo "warning: samsung-galaxybook kernel driver is not loaded; the service will not start." >&2
 fi
 
+# Remove files from before the ID moved from io.github.galaxybook to io.github.jcarmog.GalaxyBook
+OLD_UUID=galaxybook-settings@galaxybook.github.io
+gnome-extensions disable "$OLD_UUID" 2>/dev/null || true
+rm -rf "$HOME/.local/share/gnome-shell/extensions/$OLD_UUID"
+sudo rm -f /usr/share/dbus-1/services/io.github.galaxybook.Buds1.service \
+    /usr/share/dbus-1/services/io.github.galaxybook.Phone1.service \
+    /usr/share/dbus-1/system.d/io.github.galaxybook.Settings1.conf \
+    /usr/share/dbus-1/system-services/io.github.galaxybook.Settings1.service \
+    /usr/share/polkit-1/actions/io.github.galaxybook.settings.policy \
+    "$PREFIX/share/applications/io.github.galaxybook.Settings.desktop"
+
 echo "==> Installing galaxybookd service (sudo)"
 sudo install -Dm755 "$HERE/daemon/galaxybookd.py" /usr/libexec/galaxybook-settings/galaxybookd
-sudo install -Dm644 "$HERE/data/io.github.galaxybook.Settings1.conf" /usr/share/dbus-1/system.d/io.github.galaxybook.Settings1.conf
-sudo install -Dm644 "$HERE/data/io.github.galaxybook.Settings1.service" /usr/share/dbus-1/system-services/io.github.galaxybook.Settings1.service
-sudo install -Dm644 "$HERE/data/io.github.galaxybook.settings.policy" /usr/share/polkit-1/actions/io.github.galaxybook.settings.policy
+sudo install -Dm644 "$HERE/data/io.github.jcarmog.GalaxyBook.Settings1.conf" /usr/share/dbus-1/system.d/io.github.jcarmog.GalaxyBook.Settings1.conf
+sudo install -Dm644 "$HERE/data/io.github.jcarmog.GalaxyBook.Settings1.service" /usr/share/dbus-1/system-services/io.github.jcarmog.GalaxyBook.Settings1.service
+sudo install -Dm644 "$HERE/data/io.github.jcarmog.galaxybook.settings.policy" /usr/share/polkit-1/actions/io.github.jcarmog.galaxybook.settings.policy
 sudo install -Dm644 "$HERE/data/galaxybookd.service" /etc/systemd/system/galaxybookd.service
 sudo systemctl daemon-reload
 sudo systemctl reload dbus 2>/dev/null || true
@@ -29,7 +40,7 @@ sudo systemctl enable --now galaxybookd.service
 
 echo "==> Installing galaxybudsd user service (sudo)"
 sudo install -Dm755 "$HERE/daemon/galaxybudsd.py" /usr/libexec/galaxybook-settings/galaxybudsd
-sudo install -Dm644 "$HERE/data/io.github.galaxybook.Buds1.service" /usr/share/dbus-1/services/io.github.galaxybook.Buds1.service
+sudo install -Dm644 "$HERE/data/io.github.jcarmog.GalaxyBook.Buds1.service" /usr/share/dbus-1/services/io.github.jcarmog.GalaxyBook.Buds1.service
 sudo install -Dm644 "$HERE/data/galaxybudsd.service" /usr/lib/systemd/user/galaxybudsd.service
 systemctl --user daemon-reload
 systemctl --user enable galaxybudsd.service
@@ -37,7 +48,7 @@ systemctl --user restart galaxybudsd.service
 
 echo "==> Installing galaxyphoned user service (sudo)"
 sudo install -Dm755 "$HERE/daemon/galaxyphoned.py" /usr/libexec/galaxybook-settings/galaxyphoned
-sudo install -Dm644 "$HERE/data/io.github.galaxybook.Phone1.service" /usr/share/dbus-1/services/io.github.galaxybook.Phone1.service
+sudo install -Dm644 "$HERE/data/io.github.jcarmog.GalaxyBook.Phone1.service" /usr/share/dbus-1/services/io.github.jcarmog.GalaxyBook.Phone1.service
 sudo install -Dm644 "$HERE/data/galaxyphoned.service" /usr/lib/systemd/user/galaxyphoned.service
 # The user service doesn't see the shell's PATH, so point it at an SDK adb/scrcpy outside the system dirs
 DROPIN="$HOME/.config/systemd/user/galaxyphoned.service.d/tools.conf"
@@ -57,7 +68,7 @@ install -Dm755 "$HERE/data/send-to-galaxy-phone" "$HOME/.local/share/nautilus/sc
 
 echo "==> Installing Galaxy Book Settings app (sudo)"
 sudo install -Dm755 "$HERE/app/galaxybook-settings" "$PREFIX/bin/galaxybook-settings"
-sudo install -Dm644 "$HERE/data/io.github.galaxybook.Settings.desktop" "$PREFIX/share/applications/io.github.galaxybook.Settings.desktop"
+sudo install -Dm644 "$HERE/data/io.github.jcarmog.GalaxyBook.Settings.desktop" "$PREFIX/share/applications/io.github.jcarmog.GalaxyBook.Settings.desktop"
 sudo update-desktop-database "$PREFIX/share/applications" 2>/dev/null || true
 
 echo "==> Installing GNOME Shell extension for $USER"

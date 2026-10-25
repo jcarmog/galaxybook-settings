@@ -24,7 +24,7 @@ Devices found on the Windows install:
 
 ### Done
 
-- [x] `galaxybookd` D-Bus service (`io.github.galaxybook.Settings1`) with polkit checks and battery-limit restore at boot
+- [x] `galaxybookd` D-Bus service (`io.github.jcarmog.GalaxyBook.Settings1`) with polkit checks and battery-limit restore at boot
 - [x] GTK4 app `galaxybook-settings`
 - [x] GNOME Shell extension (Quick Settings tile + camera/mic blocked indicator)
 - [x] `install.sh` / `uninstall.sh`
@@ -36,8 +36,8 @@ Devices found on the Windows install:
 
 - [ ] **After logout/login:** enable and test the extension
   ```bash
-  gnome-extensions enable galaxybook-settings@galaxybook.github.io
-  gnome-extensions info galaxybook-settings@galaxybook.github.io   # expect Enabled: Yes, State: ACTIVE
+  gnome-extensions enable galaxybook-settings@jcarmog.github.io
+  gnome-extensions info galaxybook-settings@jcarmog.github.io   # expect Enabled: Yes, State: ACTIVE
   ```
   Then check that:
   - the "Galaxy Book" tile shows in Quick Settings and toggles battery protection (80% / off)
@@ -46,18 +46,18 @@ Devices found on the Windows install:
   - errors, if any: `journalctl --user -b -o cat /usr/bin/gnome-shell | grep -i galaxybook`
 - [x] **Performance mode through power-profiles-daemon** (tested 2026-10-24): daemon → sysfs + PPD stay in sync for all 3 modes, and `powerprofilesctl set` changes show up in the daemon. Commands kept for re-testing:
   ```bash
-  gdbus call --system -d io.github.galaxybook.Settings1 -o /io/github/galaxybook/Settings1 \
-      -m io.github.galaxybook.Settings1.SetPlatformProfile quiet
+  gdbus call --system -d io.github.jcarmog.GalaxyBook.Settings1 -o /io/github/jcarmog/GalaxyBook/Settings1 \
+      -m io.github.jcarmog.GalaxyBook.Settings1.SetPlatformProfile quiet
   powerprofilesctl get        # expect power-saver
-  gdbus call --system -d io.github.galaxybook.Settings1 -o /io/github/galaxybook/Settings1 \
-      -m io.github.galaxybook.Settings1.SetPlatformProfile balanced
+  gdbus call --system -d io.github.jcarmog.GalaxyBook.Settings1 -o /io/github/jcarmog/GalaxyBook/Settings1 \
+      -m io.github.jcarmog.GalaxyBook.Settings1.SetPlatformProfile balanced
   ```
 - [x] **Turn on battery protection** (set to 80% on 2026-10-24; saved in `/var/lib/galaxybook-settings/state.json`). To change it:
   ```bash
-  gdbus call --system -d io.github.galaxybook.Settings1 -o /io/github/galaxybook/Settings1 \
-      -m io.github.galaxybook.Settings1.SetChargeEndThreshold 80
+  gdbus call --system -d io.github.jcarmog.GalaxyBook.Settings1 -o /io/github/jcarmog/GalaxyBook/Settings1 \
+      -m io.github.jcarmog.GalaxyBook.Settings1.SetChargeEndThreshold 80
   ```
-- [ ] **After a reboot:** confirm the limit is restored
+- [x] **After a reboot:** confirm the limit is restored (2026-10-24: 80 after the 20:46 boot, galaxybookd started clean)
   ```bash
   cat /sys/class/power_supply/BAT1/charge_control_end_threshold   # expect 80
   journalctl -u galaxybookd -b --no-pager
@@ -67,7 +67,7 @@ Devices found on the Windows install:
 ## Phase 2: Galaxy Buds (installed 2026-10-24)
 
 Decisions (2026-10-24): target the **Buds Pro** (the pair at hand); the Bluetooth link lives in a
-**per-user D-Bus service** (`galaxybudsd`, `io.github.galaxybook.Buds1`) shared by the app and the extension.
+**per-user D-Bus service** (`galaxybudsd`, `io.github.jcarmog.GalaxyBook.Buds1`) shared by the app and the extension.
 
 Update (2026-10-24): the pair actually connected is a **Galaxy Buds3 Pro** ("José do Carmo's Buds3 Pro",
 A0:56:2C:B7:C2:E9, firmware R630XXU0AZG2). galaxybudsd now has a model table (Buds3 Pro + Buds Pro).
@@ -117,7 +117,7 @@ Debugging: `systemctl --user stop galaxybudsd; /usr/libexec/galaxybook-settings/
 ## Phase 3: Galaxy phone (S26 Ultra), installed 2026-10-24
 
 Decisions (2026-10-24):
-- Build our own **per-user service `galaxyphoned`** (`io.github.galaxybook.Phone1`) rather than use the
+- Build our own **per-user service `galaxyphoned`** (`io.github.jcarmog.GalaxyBook.Phone1`) rather than use the
   preinstalled Zorin Connect, so the phone sits in the same app and Quick Settings as the laptop and Buds.
 - **Transport: Bluetooth first, adb optional.** Bluetooth needs no phone setup: OBEX push (files),
   MAP (SMS), HFP battery indicator (0-5). When adb is reachable (USB or wireless debugging) it adds
@@ -140,7 +140,7 @@ Probed on the real phone (2026-10-24):
   wireless debugging is on.
 
 Design:
-- `io.github.galaxybook.Phone1` on the session bus, object `/io/github/galaxybook/Phone1`.
+- `io.github.jcarmog.GalaxyBook.Phone1` on the session bus, object `/io/github/jcarmog/GalaxyBook/Phone1`.
   Properties: `Connected`, `Name`, `Address`, `Battery` (-1 unknown), `BatteryCharging`, `BatterySource`
   (`bluetooth`/`adb`), `AdbConnected`, `AdbSerial`, `CanMirror`.
   Methods: `SendFiles(as)` (adb push to Download when adb is up, else OBEX push), `StartMirroring()` (scrcpy),
@@ -179,6 +179,6 @@ Debugging: `systemctl --user stop galaxyphoned; ADB=$(command -v adb) /usr/libex
 ## Useful references
 
 - Service log: `journalctl -u galaxybookd`
-- D-Bus API: `busctl --system introspect io.github.galaxybook.Settings1 /io/github/galaxybook/Settings1`
+- D-Bus API: `busctl --system introspect io.github.jcarmog.GalaxyBook.Settings1 /io/github/jcarmog/GalaxyBook/Settings1`
 - Remove everything: `./uninstall.sh` (add `--purge` to delete `/var/lib/galaxybook-settings`)
 - Development setup: see README.md

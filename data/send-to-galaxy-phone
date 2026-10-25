@@ -12,7 +12,7 @@ if not paths:
     sys.exit(0)
 try:
     Gio.bus_get_sync(Gio.BusType.SESSION).call_sync(
-        "io.github.galaxybook.Phone1", "/io/github/galaxybook/Phone1", "io.github.galaxybook.Phone1",
+        "io.github.jcarmog.GalaxyBook.Phone1", "/io/github/jcarmog/GalaxyBook/Phone1", "io.github.jcarmog.GalaxyBook.Phone1",
         "SendFiles", GLib.Variant("(as)", (paths,)), None, Gio.DBusCallFlags.NONE, -1, None)
 except GLib.Error as e:
     Gio.DBusError.strip_remote_error(e)

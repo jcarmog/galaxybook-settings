@@ -22,13 +22,13 @@ import sys
 
 from gi.repository import Gio, GLib
 
-BUS_NAME = "io.github.galaxybook.Buds1"
-OBJECT_PATH = "/io/github/galaxybook/Buds1"
-IFACE = "io.github.galaxybook.Buds1"
-ERROR_PREFIX = "io.github.galaxybook.Error."
+BUS_NAME = "io.github.jcarmog.GalaxyBook.Buds1"
+OBJECT_PATH = "/io/github/jcarmog/GalaxyBook/Buds1"
+IFACE = "io.github.jcarmog.GalaxyBook.Buds1"
+ERROR_PREFIX = "io.github.jcarmog.GalaxyBook.Error."
 
 BLUEZ = "org.bluez"
-PROFILE_PATH = "/io/github/galaxybook/BudsProfile"
+PROFILE_PATH = "/io/github/jcarmog/GalaxyBook/BudsProfile"
 CONNECT_DELAY_MS = 1500
 CONNECT_RETRIES = 3
 

@@ -3,7 +3,7 @@
  "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
 <policyconfig>
   <vendor>Galaxy Book Settings</vendor>
-  <action id="io.github.galaxybook.settings.configure">
+  <action id="io.github.jcarmog.galaxybook.settings.configure">
     <description>Change Samsung Galaxy Book hardware settings</description>
     <message>Authentication is required to change Galaxy Book hardware settings</message>
     <defaults>

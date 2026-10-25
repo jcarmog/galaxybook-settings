@@ -3,10 +3,10 @@
 A Linux replacement for the hardware parts of Samsung Settings on Windows, built for
 Samsung Galaxy Book laptops on GNOME. It includes:
 
-- **galaxybookd**, a small root D-Bus service (`io.github.galaxybook.Settings1`) that wraps the
+- **galaxybookd**, a small root D-Bus service (`io.github.jcarmog.GalaxyBook.Settings1`) that wraps the
   upstream `samsung-galaxybook` kernel driver. It checks polkit before each change and restores the battery limit at boot.
 - **Galaxy Book Settings**, a GTK4/libadwaita app.
-- **galaxybudsd**, a per-user D-Bus service (`io.github.galaxybook.Buds1`) that talks to Galaxy Buds3 Pro
+- **galaxybudsd**, a per-user D-Bus service (`io.github.jcarmog.GalaxyBook.Buds1`) that talks to Galaxy Buds3 Pro
   and Buds Pro over their Bluetooth control channel: battery, wear state, noise controls, equalizer and touch lock.
 - **A GNOME Shell extension** that adds Quick Settings tiles for the laptop and the Buds, and shows a panel icon while the camera and microphone are blocked.
 
@@ -54,9 +54,9 @@ After installing, log out and back in to load the Quick Settings tile (Wayland c
 ## CLI usage
 
 ```bash
-busctl --system introspect io.github.galaxybook.Settings1 /io/github/galaxybook/Settings1
-gdbus call --system -d io.github.galaxybook.Settings1 -o /io/github/galaxybook/Settings1 \
-    -m io.github.galaxybook.Settings1.SetChargeEndThreshold 80
+busctl --system introspect io.github.jcarmog.GalaxyBook.Settings1 /io/github/jcarmog/GalaxyBook/Settings1
+gdbus call --system -d io.github.jcarmog.GalaxyBook.Settings1 -o /io/github/jcarmog/GalaxyBook/Settings1 \
+    -m io.github.jcarmog.GalaxyBook.Settings1.SetChargeEndThreshold 80
 ```
 
 ## Development
@@ -76,5 +76,5 @@ python3 -m unittest discover tests
 
 ## Permissions
 
-Writes require the polkit action `io.github.galaxybook.settings.configure`. Active local users are
+Writes require the polkit action `io.github.jcarmog.galaxybook.settings.configure`. Active local users are
 allowed without a password, the same policy power-profiles-daemon uses. Remote and inactive sessions need admin authentication.

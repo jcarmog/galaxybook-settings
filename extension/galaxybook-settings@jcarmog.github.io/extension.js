@@ -7,14 +7,14 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import {QuickMenuToggle, SystemIndicator} from 'resource:///org/gnome/shell/ui/quickSettings.js';
 
-const BUS_NAME = 'io.github.galaxybook.Settings1';
-const OBJECT_PATH = '/io/github/galaxybook/Settings1';
-const APP_ID = 'io.github.galaxybook.Settings.desktop';
+const BUS_NAME = 'io.github.jcarmog.GalaxyBook.Settings1';
+const OBJECT_PATH = '/io/github/jcarmog/GalaxyBook/Settings1';
+const APP_ID = 'io.github.jcarmog.GalaxyBook.Settings.desktop';
 const PROTECTED_LIMIT = 80;
 
 const SettingsIface = `
 <node>
-  <interface name="io.github.galaxybook.Settings1">
+  <interface name="io.github.jcarmog.GalaxyBook.Settings1">
     <property name="Features" type="as" access="read"/>
     <property name="ChargeEndThreshold" type="u" access="read"/>
     <property name="UsbCharging" type="b" access="read"/>
@@ -28,12 +28,12 @@ const SettingsIface = `
 </node>`;
 const SettingsProxy = Gio.DBusProxy.makeProxyWrapper(SettingsIface);
 
-const BUDS_BUS_NAME = 'io.github.galaxybook.Buds1';
-const BUDS_OBJECT_PATH = '/io/github/galaxybook/Buds1';
+const BUDS_BUS_NAME = 'io.github.jcarmog.GalaxyBook.Buds1';
+const BUDS_OBJECT_PATH = '/io/github/jcarmog/GalaxyBook/Buds1';
 
 const BudsIface = `
 <node>
-  <interface name="io.github.galaxybook.Buds1">
+  <interface name="io.github.jcarmog.GalaxyBook.Buds1">
     <property name="Connected" type="b" access="read"/>
     <property name="Name" type="s" access="read"/>
     <property name="NoiseControlModes" type="as" access="read"/>
@@ -48,12 +48,12 @@ const BudsIface = `
 </node>`;
 const BudsProxy = Gio.DBusProxy.makeProxyWrapper(BudsIface);
 
-const PHONE_BUS_NAME = 'io.github.galaxybook.Phone1';
-const PHONE_OBJECT_PATH = '/io/github/galaxybook/Phone1';
+const PHONE_BUS_NAME = 'io.github.jcarmog.GalaxyBook.Phone1';
+const PHONE_OBJECT_PATH = '/io/github/jcarmog/GalaxyBook/Phone1';
 
 const PhoneIface = `
 <node>
-  <interface name="io.github.galaxybook.Phone1">
+  <interface name="io.github.jcarmog.GalaxyBook.Phone1">
     <property name="Connected" type="b" access="read"/>
     <property name="Name" type="s" access="read"/>
     <property name="Battery" type="i" access="read"/>

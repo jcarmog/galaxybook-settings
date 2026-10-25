@@ -21,11 +21,11 @@ import sys
 
 from gi.repository import Gio, GLib
 
-BUS_NAME = "io.github.galaxybook.Settings1"
-OBJECT_PATH = "/io/github/galaxybook/Settings1"
-IFACE = "io.github.galaxybook.Settings1"
-POLKIT_ACTION = "io.github.galaxybook.settings.configure"
-ERROR_PREFIX = "io.github.galaxybook.Error."
+BUS_NAME = "io.github.jcarmog.GalaxyBook.Settings1"
+OBJECT_PATH = "/io/github/jcarmog/GalaxyBook/Settings1"
+IFACE = "io.github.jcarmog.GalaxyBook.Settings1"
+POLKIT_ACTION = "io.github.jcarmog.galaxybook.settings.configure"
+ERROR_PREFIX = "io.github.jcarmog.GalaxyBook.Error."
 POLL_INTERVAL_MS = 2000
 
 PPD_NAME = "org.freedesktop.UPower.PowerProfiles"
