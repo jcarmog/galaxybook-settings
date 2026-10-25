@@ -176,7 +176,8 @@ Design:
       (`NoSuchMethodException: SurfaceControl.createDisplay`). Fixed 2026-10-24: official scrcpy v5.0.1 (checksum OK)
       unpacked in `~/.local/opt/scrcpy-linux-x86_64-v5.0.1`, with its adb 37.0.1; `~/.local/bin/{scrcpy,adb}` link to it,
       so install.sh writes the drop-in for both. adb now reconnects to the phone by itself over mDNS
-- [ ] Log AdbPair input errors in the service (they are only shown in the app now)
+- [x] Log AdbPair input errors in the service (they are only shown in the app now)
+      (2026-10-24: every failed method call is logged as a warning, without the pairing code; checked in the journal)
 - [x] Test Mirror screen with scrcpy 5.0.1 (apt's 1.25 is too old for Android 17, see above)
       (2026-10-24: StartMirroring opened the S26 Ultra screen in scrcpy 5.0.1)
 - [x] Press Mirror screen again while scrcpy is open: the extension should raise the existing window

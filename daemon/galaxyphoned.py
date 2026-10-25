@@ -378,6 +378,8 @@ class Service:
             else:
                 raise DBusError("UnknownMethod", method)
         except DBusError as e:
+            # The caller shows the error; log it too so failed calls show up in the journal
+            log.warning("%s failed: %s", method, e)
             invocation.return_dbus_error(e.name, str(e))
             return
         log.info("%s%r", method, args if method != "AdbPair" else ())

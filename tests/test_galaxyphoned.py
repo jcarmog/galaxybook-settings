@@ -142,5 +142,23 @@ class ScrcpyPidsTests(unittest.TestCase):
             self.assertEqual(phoned.scrcpy_pids(root), [102])
 
 
+
+class MethodErrorTests(unittest.TestCase):
+    class Invocation:
+        def return_dbus_error(self, name, message):
+            self.error = (name, message)
+
+    def test_adb_pair_bad_input_is_logged_without_the_code(self):
+        service = phoned.Service.__new__(phoned.Service)
+        service.adb_path = "/usr/bin/adb"
+        invocation = self.Invocation()
+        params = phoned.GLib.Variant("(ss)", ("192.168.0.10", "123456"))
+        with self.assertLogs("galaxyphoned", "WARNING") as logs:
+            service._on_method_call(None, None, None, None, "AdbPair", params, invocation)
+        self.assertEqual(invocation.error[0], phoned.ERROR_PREFIX + "InvalidArgs")
+        self.assertIn("AdbPair failed: Enter the IP address:port", logs.output[0])
+        self.assertNotIn("123456", logs.output[0])
+
+
 if __name__ == "__main__":
     unittest.main()
