@@ -34,7 +34,7 @@ Devices found on the Windows install:
 
 ### To do
 
-- [ ] **After logout/login:** enable and test the extension
+- [x] **After logout/login:** enable and test the extension (2026-10-24: Enabled: Yes, State: ACTIVE, no shell errors)
   ```bash
   gnome-extensions enable galaxybook-settings@jcarmog.github.io
   gnome-extensions info galaxybook-settings@jcarmog.github.io   # expect Enabled: Yes, State: ACTIVE
@@ -104,7 +104,7 @@ Neither pair is paired on Linux yet.
 - [x] **Reinstall** to deploy galaxybudsd and the new app/extension: `./install.sh`, then close and reopen the app
 - [x] Check the installed service picks up the Buds: `systemctl --user status galaxybudsd` and the app's Galaxy Buds tab
 - [x] Disconnect/reconnect the Buds: service clears status (battery -1, mode "") and refills it on reconnect (tested 2026-10-24 via bluetoothctl)
-- [ ] **After logout/login**: check the Galaxy Buds tile together with the Galaxy Book tile
+- [x] **After logout/login**: check the Galaxy Buds tile together with the Galaxy Book tile (2026-10-24: both look right)
 - [x] Commit phase 2 (`5995765`)
 
 Debugging: `systemctl --user stop galaxybudsd; /usr/libexec/galaxybook-settings/galaxybudsd --debug`
@@ -179,9 +179,9 @@ Design:
 - [ ] Log AdbPair input errors in the service (they are only shown in the app now)
 - [x] Test Mirror screen with scrcpy 5.0.1 (apt's 1.25 is too old for Android 17, see above)
       (2026-10-24: StartMirroring opened the S26 Ultra screen in scrcpy 5.0.1)
-- [ ] Press Mirror screen again while scrcpy is open: the extension should raise the existing window
-      (RaiseMirroring signal; the service logged it on 2026-10-24, the raise itself is not confirmed yet)
-- [ ] After logout/login: Galaxy phone tile
+- [x] Press Mirror screen again while scrcpy is open: the extension should raise the existing window
+      (2026-10-24: RaiseMirroring raised the existing window from the tile; one scrcpy process, no second window)
+- [x] After logout/login: Galaxy phone tile (2026-10-24: shown with the Galaxy Book and Buds tiles, battery right)
 - [x] Commit phase 3 (2026-10-24)
 
 Debugging: `systemctl --user stop galaxyphoned; ADB=$(command -v adb) /usr/libexec/galaxybook-settings/galaxyphoned --debug`
