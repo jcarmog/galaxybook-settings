@@ -165,7 +165,8 @@ Design:
       /usr/bin, Nautilus script "Send to Galaxy phone"
 - [x] **Install** (2026-10-24): all installed files match the source; galaxyphoned active and enabled, sees the phone
       (battery 40%, bluetooth source), MAP session open; adb drop-in written; extension ACTIVE after re-login, no shell errors
-- [ ] Send a file over Bluetooth (accept on the phone) from the app and from Nautilus (right-click › Scripts)
+- [x] Send a file over Bluetooth (accept on the phone) from the app and from Nautilus (right-click › Scripts)
+      (2026-10-24: received on the phone via D-Bus `SendFiles`, the app's Send files button and the Nautilus script)
 - [ ] Receive an SMS and check the desktop notification (MAP event or the 120 s poll)
 - [ ] Pair adb over wireless debugging from the app; check exact battery, app notifications, adb push
 - [ ] Install scrcpy (`sudo apt install scrcpy`, 1.25 in the Zorin repo) and test Mirror screen
